@@ -1,0 +1,27 @@
+# GPT-2 124M on "The Verdict" -- the book's chapter 5 setup (gpt_train.py), as a pipeline test.
+# The text is ~5k tokens, so the model memorises it: expect train loss to fall far below val loss.
+model:
+  preset: gpt2-124m
+  context_length: 256      # shortened from 1024, as in the book
+  drop_rate: 0.1
+  qkv_bias: false
+  init_std: null           # PyTorch default init, like the book (GPT-2 init learns this tiny text slower)
+
+data:
+  data_dir: data/verdict
+  num_workers: 0
+
+train:
+  out_dir: runs/gpt2_verdict
+  batch_size: 2            # per GPU
+  epochs: 10
+  lr: 5.0e-4
+  weight_decay: 0.1
+  lr_schedule: constant
+  beta2: 0.999             # book: torch AdamW defaults, no gradient clipping
+  grad_clip: null
+  log_every: 1
+  eval_every: 5
+  sample_every: 10
+  sample_prompt: "Every effort moves you"
+  sample_tokens: 50

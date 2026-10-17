@@ -1,0 +1,35 @@
+# Template for a real pretraining run on 8x A100 (GPT-2 124M, ~10B tokens).
+# Prepare the data on NVMe first, e.g.:
+#   python prepare_data.py --hf_dataset HuggingFaceFW/fineweb-edu --hf_config sample-10BT \
+#       --output_dir /mnt/nvme/tok/fineweb-edu-10bt --val_fraction 0.001 --num_proc 64
+model:
+  preset: gpt2-124m        # context 1024
+  drop_rate: 0.0
+  tie_embeddings: true
+
+data:
+  data_dir: /mnt/nvme/tok/fineweb-edu-10bt
+  num_workers: 4
+
+train:
+  out_dir: /mnt/nvme/runs/gpt2_124m
+  batch_size: 32           # per GPU; 8 GPUs x 32 x 1024 x accum 2 = 524,288 tokens/step
+  grad_accum_steps: 2
+  epochs: null
+  max_steps: 19073         # ~10B tokens
+  lr: 6.0e-4
+  warmup_steps: 700
+  lr_schedule: cosine
+  min_lr_ratio: 0.1
+  weight_decay: 0.1
+  grad_clip: 1.0
+  compile: true
+  log_every: 10
+  eval_every: 250
+  eval_batches: 20
+  sample_every: 1000
+  sample_prompt: "The meaning of education is"
+  sample_temperature: 0.8
+  sample_top_k: 50
+  save_every: 1000
+  resume: auto
