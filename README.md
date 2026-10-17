@@ -1,5 +1,11 @@
 # llm-pretraining
 
+**Author:** Anjaneyalu Thippaiah
+
+**Reference:** built on [rasbt/LLMs-from-scratch](https://github.com/rasbt/LLMs-from-scratch)
+by Sebastian Raschka, the code for the book *Build a Large Language Model (From Scratch)*
+(Manning, 2024). See [Credits and references](#credits-and-references).
+
 Train GPT-2 and Llama-style language models **from scratch** on any text, evaluate them,
 and **instruction-finetune** pretrained GPT-2, all from the console with plain Python
 scripts. Everything runs on one GPU or on every GPU of the node (`torchrun`, DDP).
@@ -33,6 +39,7 @@ is reorganised into a reusable package and extended with:
 13. [Running long jobs](#running-long-jobs)
 14. [Troubleshooting](#troubleshooting)
 15. [Mapping to the book](#mapping-to-the-book)
+16. [Credits and references](#credits-and-references)
 
 ---
 
@@ -808,3 +815,47 @@ restart it with `--set train.resume=auto`.
 | ch05 bonus - Llama 3 | `llmtrain/models/llama.py` |
 | ch07 - instruction finetuning and evaluation | `finetune.py`, `llmtrain/instruct.py`, `score_responses.py` |
 | appendix D - warmup, cosine decay, gradient clipping | `llmtrain/optim.py`, `train.grad_clip` |
+
+---
+
+## Credits and references
+
+**Author of this repository:** Anjaneyalu Thippaiah
+
+**Reference code base:** [rasbt/LLMs-from-scratch](https://github.com/rasbt/LLMs-from-scratch)
+by Sebastian Raschka, the official code for the book
+[*Build a Large Language Model (From Scratch)*](https://www.manning.com/books/build-a-large-language-model-from-scratch)
+(Manning, 2024). It is licensed under the Apache License 2.0.
+
+This repository adapts the following from the reference, reorganised and extended as
+described above:
+
+| from the reference repo | used here in |
+|---|---|
+| GPT model (ch03-ch04: attention, LayerNorm, GELU, transformer block) | `llmtrain/models/gpt.py` |
+| Llama 3 model (`pkg/llms_from_scratch/llama3.py`: RMSNorm, RoPE, GQA, SwiGLU) | `llmtrain/models/llama.py` |
+| sliding-window dataset, training loop, loss and generation (ch02, ch05) | `llmtrain/data.py`, `train.py`, `llmtrain/evaluation.py`, `llmtrain/generation.py` |
+| OpenAI GPT-2 download and weight mapping (ch05 `gpt_download.py`, `load_weights_into_gpt`) | `llmtrain/gpt2_weights.py`, `import_gpt2.py` |
+| instruction dataset, prompt template, padding/masking collate (ch07) | `llmtrain/instruct.py`, `finetune.py` |
+| LLM-judge scoring with Ollama (ch07 `ollama_evaluate.py`) | `score_responses.py` |
+| `requirements.txt` | `requirements.txt` (plus `pyyaml`, `tensorboard`) |
+| `the-verdict.txt` (ch02) and `instruction-data.json` (ch07) | `data/raw/`, `data/instruct/` |
+
+Added in this repository: the package structure, multi-GPU (DDP) training and evaluation,
+bf16 / `torch.compile`, the YAML config system, the general-purpose data pipeline
+(`prepare_data.py`), checkpointing and resume, evaluation metrics (accuracy,
+bits-per-byte), metric tracking, and the command-line tools.
+
+Other sources:
+
+- **GPT-2 weights:** OpenAI, [openai/gpt-2](https://github.com/openai/gpt-2), downloaded by `import_gpt2.py`.
+- **Tokenizer:** OpenAI [tiktoken](https://github.com/openai/tiktoken).
+- **"The Verdict":** a 1908 short story by Edith Wharton (public domain), as used in the book.
+- **Instruction prompt template:** the Alpaca format from [Stanford Alpaca](https://github.com/tatsu-lab/stanford_alpaca), as used in the book.
+
+If you use this repository, please also credit the reference work:
+
+```
+Raschka, Sebastian. Build A Large Language Model (From Scratch). Manning, 2024.
+ISBN: 978-1633437166. https://github.com/rasbt/LLMs-from-scratch
+```
