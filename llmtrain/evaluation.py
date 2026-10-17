@@ -12,6 +12,8 @@ import torch.nn.functional as F
 
 from llmtrain.dist import all_reduce_sum
 
+IGNORE_INDEX = -100  # target value excluded from loss and metrics (padding, masked prompts)
+
 
 def autocast_context(device: torch.device, precision: str):
     if precision == "bf16" and device.type in ("cuda", "cpu"):
@@ -21,7 +23,8 @@ def autocast_context(device: torch.device, precision: str):
 
 def lm_loss(logits: torch.Tensor, targets: torch.Tensor, reduction: str = "mean") -> torch.Tensor:
     # loss in fp32 even under bf16 autocast, for a stable log-softmax over the vocab
-    return F.cross_entropy(logits.float().flatten(0, 1), targets.flatten(), reduction=reduction)
+    return F.cross_entropy(logits.float().flatten(0, 1), targets.flatten(), reduction=reduction,
+                           ignore_index=IGNORE_INDEX)
 
 
 @torch.no_grad()
@@ -40,9 +43,10 @@ def evaluate(model: nn.Module, loader, device: torch.device, precision: str = "b
         x, y = x.to(device, non_blocking=True), y.to(device, non_blocking=True)
         with autocast_context(device, precision):
             logits = model(x)
+        valid = y != IGNORE_INDEX
         totals[0] += lm_loss(logits, y, reduction="sum").double()
-        totals[1] += y.numel()
-        totals[2] += (logits.argmax(dim=-1) == y).sum().double()
+        totals[1] += valid.sum()
+        totals[2] += ((logits.argmax(dim=-1) == y) & valid).sum().double()
     all_reduce_sum(totals)
     model.train(was_training)
 

@@ -3,6 +3,7 @@
   python generate.py --checkpoint runs/gpt2_verdict/ckpt_best.pt --prompt "Every effort moves you"
   python generate.py --checkpoint ... --prompt "Once upon a time" --temperature 0.8 --top_k 50 --num_samples 3
   python generate.py --checkpoint ...            # interactive: type prompts, Ctrl-D to quit
+  python generate.py --checkpoint runs/sft_gpt2_355m/model.pt --instruct --prompt "Name a primary color."
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ import torch
 
 from llmtrain.checkpoint import load_model
 from llmtrain.generation import generate_text
+from llmtrain.instruct import format_prompt
 from llmtrain.tokenizer import get_tokenizer
 
 
@@ -27,6 +29,8 @@ def parse_args():
     p.add_argument("--num_samples", type=int, default=1)
     p.add_argument("--seed", type=int, default=123)
     p.add_argument("--precision", default="bf16", choices=["bf16", "fp32"])
+    p.add_argument("--instruct", action="store_true",
+                   help="wrap the prompt in the instruction template used by finetune.py")
     p.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     return p.parse_args()
 
@@ -39,12 +43,16 @@ def main():
     print(f"loaded {args.checkpoint} (step {ckpt.get('step', '?')})")
 
     def run(prompt: str) -> None:
+        if args.instruct:
+            prompt = format_prompt({"instruction": prompt})
         for i in range(args.num_samples):
             torch.manual_seed(args.seed + i)
             text = generate_text(model, enc, prompt, device, args.max_new_tokens, cfg.model.context_length,
                                  temperature=args.temperature, top_k=args.top_k, top_p=args.top_p,
                                  precision=args.precision)
             header = f"--- sample {i + 1}" if args.num_samples > 1 else "---"
+            if args.instruct:
+                text = text[len(prompt):].replace(enc.decode([enc.eot_token]), "").strip()
             print(f"{header}\n{text}\n")
 
     if args.prompt is not None:

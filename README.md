@@ -16,6 +16,9 @@ prepare_data.py        raw text / jsonl / csv / parquet / HF dataset -> train.bi
 train.py               training (python or torchrun), config-driven
 evaluate.py            loss, perplexity, accuracy, bits-per-byte (+ sample generations)
 generate.py            text generation from a checkpoint (one-shot or interactive)
+import_gpt2.py         download OpenAI GPT-2 weights -> checkpoint
+finetune.py            instruction finetuning (book ch07), writes test-set responses
+score_responses.py     LLM-judge scoring of responses (Ollama)
 configs/               YAML run configs
 scripts/run_verdict.sh end-to-end test on "The Verdict"
 llmtrain/
@@ -29,6 +32,8 @@ llmtrain/
   dist.py              torchrun setup, all-reduce helpers
   tracking.py          metrics.jsonl, TensorBoard, loss plot
   tokenizer.py         tiktoken encodings
+  gpt2_weights.py      OpenAI GPT-2 download + weight mapping
+  instruct.py          instruction prompt format, dataset, padding/masking collate
 ```
 
 ## Setup
@@ -122,6 +127,36 @@ python generate.py --checkpoint runs/gpt2_verdict/ckpt_best.pt --prompt "Every e
 python generate.py --checkpoint ... --prompt "I had" --temperature 0.8 --top_k 50 --num_samples 3
 python generate.py --checkpoint ...    # interactive
 ```
+
+## 5. Instruction finetuning (book chapter 7)
+
+Load OpenAI's pretrained GPT-2 weights, then finetune on Alpaca-style
+`{"instruction", "input", "output"}` records (JSON list or JSONL). The book's 1,100-example
+dataset is in `data/instruct/instruction-data.json`; it is split 85% train / 10% test / 5% val.
+
+```bash
+python import_gpt2.py --size 355M          # 124M, 355M, 774M, 1558M -> pretrained/gpt2-355m.pt
+torchrun --standalone --nproc_per_node=8 finetune.py --base pretrained/gpt2-355m.pt \
+    --data data/instruct/instruction-data.json --out_dir runs/sft_gpt2_355m
+
+python generate.py --checkpoint runs/sft_gpt2_355m/model.pt --instruct --prompt "Name a primary color."
+python score_responses.py runs/sft_gpt2_355m/test_responses.json      # LLM judge, needs Ollama
+```
+
+`finetune.py` reports train/val loss during training, full-split loss, perplexity and
+accuracy at the end, and writes `model.pt`, `loss.png`, `metrics.jsonl` and
+`test_responses.json` (the model's answer for every test example).
+
+- `--base` accepts any checkpoint, including your own pretraining runs.
+- `--batch_size` is the **global** batch (default 8, as in the book). On 8 GPUs that is
+  one example per GPU, so results match the single-GPU book run.
+- `--mask_prompt` trains on response tokens only. `--epochs`, `--lr`, `--max_length` and
+  `--val_data` / `--test_data` (separate files) are also available.
+
+`score_responses.py` asks a judge model (default `llama3` via a local Ollama server) to rate
+each response from 0 to 100, then prints the average. Pass several files to compare runs.
+
+GPT-2 355M, 2 epochs, 8 GPUs: train loss 0.32, val loss 0.65 (book: ~0.31 / ~0.66).
 
 ## Reference results: GPT-2 124M on "The Verdict" (`configs/gpt2_verdict.yaml`)
 
