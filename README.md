@@ -900,6 +900,9 @@ restart it with `--set train.resume=auto`.
 
 ## Credits and references
 
+This repository is licensed under the [Apache License 2.0](LICENSE), the same license as
+the reference repository.
+
 **Author of this repository:** Anjaneyalu Thippaiah
 
 **Reference code base:** [rasbt/LLMs-from-scratch](https://github.com/rasbt/LLMs-from-scratch)
