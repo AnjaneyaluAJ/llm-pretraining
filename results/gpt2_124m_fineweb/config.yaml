@@ -1,0 +1,51 @@
+model:
+  preset: gpt2-124m
+  type: gpt
+  vocab_size: 50257
+  context_length: 1024
+  emb_dim: 768
+  n_heads: 12
+  n_layers: 12
+  drop_rate: 0.0
+  qkv_bias: false
+  tie_embeddings: true
+  init_std: 0.02
+  n_kv_heads: null
+  hidden_dim: null
+  rope_theta: 10000.0
+  norm_eps: 1.0e-05
+data:
+  data_dir: /mnt/nvme/tok/fineweb-edu-10bt
+  stride: null
+  num_workers: 4
+train:
+  out_dir: /mnt/nvme/runs/gpt2_124m_fineweb
+  seed: 123
+  batch_size: 16
+  grad_accum_steps: 8
+  epochs: null
+  max_steps: 18966
+  lr: 0.0006
+  min_lr_ratio: 0.1
+  lr_schedule: cosine
+  warmup_steps: 700
+  weight_decay: 0.1
+  beta1: 0.9
+  beta2: 0.95
+  grad_clip: 1.0
+  precision: bf16
+  compile: true
+  peak_flops: 70000000000000.0
+  log_every: 10
+  eval_every: 250
+  eval_batches: 20
+  sample_every: 1000
+  sample_prompt: The meaning of education is
+  sample_tokens: 50
+  sample_temperature: 0.8
+  sample_top_k: 50
+  hellaswag_every: 1000
+  hellaswag_limit: null
+  tensorboard: true
+  save_every: 1000
+  resume: auto

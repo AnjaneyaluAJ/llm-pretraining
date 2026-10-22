@@ -28,6 +28,7 @@ from llmtrain.data import eval_loader, load_meta, split_dataset, train_loader
 from llmtrain.dist import all_reduce_mean, barrier, cleanup_distributed, setup_distributed
 from llmtrain.evaluation import autocast_context, evaluate, lm_loss
 from llmtrain.generation import generate_text
+from llmtrain.hellaswag import evaluate_hellaswag
 from llmtrain.models import build_model, count_params, flops_per_token
 from llmtrain.optim import build_optimizer, lr_at
 from llmtrain.tokenizer import get_tokenizer
@@ -214,6 +215,15 @@ def main():
             if metrics.get("val/loss", float("inf")) < best_val:
                 best_val = metrics["val/loss"]
                 save("ckpt_best.pt", with_optimizer=False)
+
+        if tc.hellaswag_every and (step % tc.hellaswag_every == 0 or step == total_steps):
+            hs = evaluate_hellaswag(model, enc, d.device, tc.precision, d.rank, d.world_size,
+                                    tc.hellaswag_limit)
+            log(f"  hellaswag step {step}: acc_norm {100 * hs['acc_norm']:.2f}%, "
+                f"acc {100 * hs['acc']:.2f}% ({hs['examples']:,} examples)")
+            if logger:
+                logger.log(step, tokens_seen=tokens_seen, **{"hellaswag/acc": hs["acc"],
+                                                             "hellaswag/acc_norm": hs["acc_norm"]})
 
         if tc.sample_every and (step % tc.sample_every == 0 or step == total_steps):
             sample()

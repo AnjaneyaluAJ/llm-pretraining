@@ -1,0 +1,40 @@
+# GPT-2 124M on FineWeb-Edu sample-10BT (one epoch, ~9.9B tokens) on 4x A10G 24GB (AWS g5.12xlarge).
+# Same recipe as gpt2_124m_pretrain.yaml; only the batch split changes to fit 24 GB per GPU.
+# Measured: ~177k tok/s, ~54% MFU, ~15.5 h. Goal: beat OpenAI GPT-2 124M on HellaSwag (29.6% acc_norm).
+#   python scripts/download_fineweb_edu.py --sample 10BT --out /mnt/nvme/raw/fineweb-edu
+#   python prepare_data.py --input /mnt/nvme/raw/fineweb-edu/sample/10BT \
+#       --output_dir /mnt/nvme/tok/fineweb-edu-10bt --val_fraction 0.001 --num_proc 44
+#   torchrun --standalone --nproc_per_node=4 train.py --config configs/gpt2_124m_fineweb_a10g.yaml
+model:
+  preset: gpt2-124m        # context 1024
+  drop_rate: 0.0
+  tie_embeddings: true
+
+data:
+  data_dir: /mnt/nvme/tok/fineweb-edu-10bt
+  num_workers: 4
+
+train:
+  out_dir: /mnt/nvme/runs/gpt2_124m_fineweb
+  batch_size: 16           # per GPU (32 runs out of memory); 4 GPUs x 16 x 1024 x accum 8 = 524,288 tokens/step
+  grad_accum_steps: 8
+  epochs: null
+  max_steps: 18966         # one pass over the 9.94B training tokens
+  lr: 6.0e-4
+  warmup_steps: 700
+  lr_schedule: cosine
+  min_lr_ratio: 0.1
+  weight_decay: 0.1
+  grad_clip: 1.0
+  compile: true
+  peak_flops: 7.0e+13      # A10G bf16 dense; write floats with a decimal point or YAML reads a string
+  log_every: 10
+  eval_every: 250
+  eval_batches: 20
+  hellaswag_every: 1000    # full 10,042-example eval, ~2 min on 4 GPUs
+  sample_every: 1000
+  sample_prompt: "The meaning of education is"
+  sample_temperature: 0.8
+  sample_top_k: 50
+  save_every: 1000
+  resume: auto

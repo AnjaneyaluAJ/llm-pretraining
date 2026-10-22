@@ -1,0 +1,21 @@
+{
+  "checkpoint": "pretrained/gpt2-124m.pt",
+  "source": "/mnt/nvme/tok/fineweb-edu-10bt [val]",
+  "context_length": 1024,
+  "step": 0,
+  "loss": 3.261962699497678,
+  "perplexity": 26.100714762698594,
+  "accuracy": 0.39410807291666666,
+  "tokens": 9953280,
+  "bits_per_byte": 1.0189081317573048,
+  "samples": [
+    {
+      "prompt": "The meaning of education is",
+      "text": "The meaning of education is not the same as the meaning of life.\n\nThe meaning of education is not the same as the meaning of life.\n\nThe meaning of education is not the same as the meaning of life"
+    },
+    {
+      "prompt": "Photosynthesis is the process",
+      "text": "Photosynthesis is the process of converting carbon dioxide into energy.\n\nThe process is called \"carbon capture and storage\" (CCS).\n\nCCS is a process that involves the use of carbon dioxide to produce electricity"
+    }
+  ]
+}

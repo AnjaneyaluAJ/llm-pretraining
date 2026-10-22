@@ -1,0 +1,21 @@
+{
+  "checkpoint": "/mnt/nvme/runs/gpt2_124m_fineweb/ckpt_last.pt",
+  "source": "/mnt/nvme/tok/fineweb-edu-10bt [val]",
+  "context_length": 1024,
+  "step": 18966,
+  "loss": 2.9901129738293557,
+  "perplexity": 19.88792918017127,
+  "accuracy": 0.4212352109053498,
+  "tokens": 9953280,
+  "bits_per_byte": 0.9339930295269511,
+  "samples": [
+    {
+      "prompt": "The meaning of education is",
+      "text": "The meaning of education is to provide a means of acquiring knowledge and skills. It is a process of acquiring knowledge and skills. It is a process of acquiring knowledge and skills.\nThe word education is derived from the Greek word"
+    },
+    {
+      "prompt": "Photosynthesis is the process",
+      "text": "Photosynthesis is the process by which plants convert sunlight into energy.\n- Photosynthesis is the process by which plants convert sunlight into food.\n- Photosynthesis is the process by which plants convert sunlight into food.\n-"
+    }
+  ]
+}
