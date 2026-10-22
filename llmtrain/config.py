@@ -74,6 +74,8 @@ class TrainConfig:
     sample_tokens: int = 50
     sample_temperature: float = 0.0     # 0 = greedy
     sample_top_k: Optional[int] = None
+    hellaswag_every: Optional[int] = None   # steps between HellaSwag evals; null disables
+    hellaswag_limit: Optional[int] = None   # examples per HellaSwag eval; null = all 10,042
     tensorboard: bool = True
     # checkpoints
     save_every: Optional[int] = None    # steps; final checkpoint is always saved
