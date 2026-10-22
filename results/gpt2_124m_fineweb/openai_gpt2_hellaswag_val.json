@@ -1,0 +1,7 @@
+{
+  "checkpoint": "pretrained/gpt2-124m.pt",
+  "step": 0,
+  "acc": 0.28560047799243177,
+  "acc_norm": 0.29575781716789484,
+  "examples": 10042
+}

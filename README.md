@@ -19,6 +19,12 @@ is reorganised into a reusable package and extended with:
 - YAML configs with command-line overrides, checkpoints and automatic resume
 - evaluation: loss, perplexity, next-token accuracy and bits-per-byte, during training and standalone
 - loading OpenAI's GPT-2 weights, instruction finetuning, and LLM-judge scoring
+- the HellaSwag benchmark, standalone and during training
+
+**Result:** a GPT-2 124M trained from scratch with this repo on 10B tokens of FineWeb-Edu
+scores **30.6% on HellaSwag, beating OpenAI's GPT-2 124M (29.6%)**. See
+[Reference results](#reference-results) and
+[results/gpt2_124m_fineweb](results/gpt2_124m_fineweb/README.md).
 
 ---
 
@@ -83,7 +89,7 @@ Optional extras, only needed for specific features:
 
 | package | needed for | install |
 |---|---|---|
-| `datasets` | `prepare_data.py --hf_dataset` | `uv pip install datasets` |
+| `datasets` | `prepare_data.py --hf_dataset`, `hellaswag.py`, `scripts/download_fineweb_edu.py` | `uv pip install datasets` |
 | `pyarrow` | `.parquet` input files | `uv pip install pyarrow` |
 | Ollama | `score_responses.py` | see [Step 6](#step-6---score-responses-with-an-llm-judge) |
 
@@ -103,6 +109,7 @@ llm-pretraining/
 ├── prepare_data.py          raw text / jsonl / csv / parquet / HF dataset -> train.bin, val.bin, meta.json
 ├── train.py                 pretraining (python or torchrun), config driven
 ├── evaluate.py              loss, perplexity, accuracy, bits/byte (+ sample generations)
+├── hellaswag.py             zero-shot HellaSwag accuracy of any checkpoint
 ├── generate.py              text generation (one-shot or interactive, base or instruction mode)
 ├── import_gpt2.py           download OpenAI GPT-2 weights -> checkpoint
 ├── finetune.py              instruction finetuning, writes test-set responses
@@ -110,8 +117,12 @@ llm-pretraining/
 ├── configs/
 │   ├── gpt2_verdict.yaml        GPT-2 124M on The Verdict (book ch05 settings)
 │   ├── llama_tiny_verdict.yaml  small Llama-style model on The Verdict
-│   └── gpt2_124m_pretrain.yaml  template for a real ~10B-token run on 8 GPUs
-├── scripts/run_verdict.sh   end-to-end test: prepare -> train -> evaluate -> generate
+│   ├── gpt2_124m_pretrain.yaml  template for a real ~10B-token run on 8 GPUs
+│   └── gpt2_124m_fineweb_a10g.yaml  the run in results/: GPT-2 124M, FineWeb-Edu 10B, 4x A10G
+├── scripts/
+│   ├── run_verdict.sh       end-to-end test: prepare -> train -> evaluate -> generate
+│   └── download_fineweb_edu.py  fast parquet download of a FineWeb-Edu sample
+├── results/                 write-ups, metrics and charts of finished runs
 ├── data/
 │   ├── raw/the-verdict.txt          pretraining test text (book ch02)
 │   └── instruct/instruction-data.json  1,100 instruction examples (book ch07)
@@ -120,6 +131,7 @@ llm-pretraining/
 │   ├── models/              gpt.py (GPT-2), llama.py (Llama 3), presets, build_model
 │   ├── data.py              memory-mapped token windows, distributed samplers
 │   ├── evaluation.py        distributed loss / perplexity / accuracy / bits-per-byte
+│   ├── hellaswag.py         distributed HellaSwag scoring
 │   ├── generation.py        greedy, temperature, top-k, top-p sampling
 │   ├── optim.py             AdamW parameter groups, warmup + cosine schedule
 │   ├── checkpoint.py        save / load / resume
@@ -298,6 +310,26 @@ torchrun --standalone --nproc_per_node=8 train.py --config configs/gpt2_124m_pre
 Keep data and checkpoints on the NVMe drives: the root disk is only 45 GB, and a GPT-2 124M
 checkpoint with optimizer state is ~1.5 GB.
 
+Streaming with `--hf_dataset` reads one document at a time. It is much faster to download the
+parquet files first and tokenize them locally with every core (27 GB in under a minute, then
+about 6 minutes to tokenize on 48 cores):
+
+```bash
+export HF_HOME=/mnt/nvme/hf
+python scripts/download_fineweb_edu.py --sample 10BT --out /mnt/nvme/raw/fineweb-edu
+python prepare_data.py --input /mnt/nvme/raw/fineweb-edu/sample/10BT \
+    --output_dir /mnt/nvme/tok/fineweb-edu-10bt --val_fraction 0.001 --num_proc 44
+```
+
+`configs/gpt2_124m_fineweb_a10g.yaml` is the same recipe for 4 GPUs with 24 GB each
+(batch 16 x accumulation 8), with HellaSwag every 1000 steps. It is the run in
+[results/gpt2_124m_fineweb](results/gpt2_124m_fineweb/README.md):
+
+```bash
+PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
+    torchrun --standalone --nproc_per_node=4 train.py --config configs/gpt2_124m_fineweb_a10g.yaml
+```
+
 ### Batch size and steps
 
 ```
@@ -432,6 +464,25 @@ bits/byte   2.2490
 tokens      512 evaluated on 8 GPU(s)
 saved runs/gpt2_verdict/eval_verdict_val.json
 ```
+
+---
+
+### HellaSwag
+
+`hellaswag.py` measures zero-shot common-sense reasoning: for each of the 10,042 validation
+examples the model picks the most likely of 4 endings (random guessing = 25%). `acc_norm`
+divides each ending's loss by its length and is the number usually quoted for GPT-2-sized models.
+The data comes from the Hugging Face hub (`Rowan/hellaswag`, needs `datasets`).
+
+```bash
+torchrun --standalone --nproc_per_node=4 hellaswag.py --checkpoint runs/my_run/ckpt_last.pt
+python import_gpt2.py --size 124M     # OpenAI's GPT-2 as a baseline
+torchrun --standalone --nproc_per_node=4 hellaswag.py --checkpoint pretrained/gpt2-124m.pt
+```
+
+OpenAI's GPT-2 124M scores 29.58% acc_norm with this code (29.55% in karpathy/build-nanogpt).
+The full set takes about 2 minutes on 4 A10G GPUs; `--limit N` scores only the first N examples.
+Set `train.hellaswag_every` to track it during pretraining.
 
 ---
 
@@ -687,13 +738,15 @@ shapes but use the data's tokenizer.
 | `grad_clip` | `1.0` | max gradient norm; `null` disables |
 | `precision` | `bf16` | `bf16` autocast or `fp32` |
 | `compile` | `false` | `torch.compile` (slower start, faster steps) |
-| `peak_flops` | `312e12` | per-GPU peak for the MFU estimate |
+| `peak_flops` | `312e12` | per-GPU peak for the MFU estimate (A100 312e12, H100 989e12, A10G ~70e12); in YAML write `7.0e+13`, since `70e12` is read as a string |
 | `log_every` | `1` | steps between log lines |
 | `eval_every` | `5` | steps between evaluations |
 | `eval_batches` | all | per-GPU batch cap per evaluation |
 | `sample_every` | `50` | steps between generated samples (`0` disables) |
 | `sample_prompt`, `sample_tokens` | `Every effort moves you`, `50` | |
 | `sample_temperature`, `sample_top_k` | `0`, none | |
+| `hellaswag_every` | none | steps between HellaSwag evaluations (none disables) |
+| `hellaswag_limit` | all | examples per HellaSwag evaluation |
 | `tensorboard` | `true` | write TensorBoard logs |
 | `save_every` | none | steps between `ckpt_last.pt` saves (final save always happens) |
 | `resume` | none | `auto` or a checkpoint path |
@@ -731,6 +784,17 @@ train:
 ---
 
 ## Reference results
+
+**GPT-2 124M from scratch on FineWeb-Edu 10B** (`configs/gpt2_124m_fineweb_a10g.yaml`,
+4x A10G, 16.4 h). Full write-up, metrics and charts in
+[results/gpt2_124m_fineweb](results/gpt2_124m_fineweb/README.md).
+
+| | OpenAI GPT-2 124M | this repo |
+|---|---|---|
+| HellaSwag acc_norm | 29.58% | **30.59%** |
+| FineWeb-Edu val loss (in-domain for this repo's model) | 3.262 | **2.990** |
+
+![HellaSwag during training](results/gpt2_124m_fineweb/gpt2_hellaswag.png)
 
 Measured on this server (8x A100 80GB).
 
@@ -790,6 +854,9 @@ restart it with `--set train.resume=auto`.
 
 | symptom | cause / fix |
 |---|---|
+| `CUDA out of memory` with GBs "reserved but unallocated" | allocator fragmentation; run with `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` |
+| `Failed to find C compiler` with `compile: true` | Triton needs gcc: `sudo apt install build-essential` |
+| `unsupported operand type(s) for /: 'float' and 'str'` | a float in YAML without a decimal point (`70e12`); write `7.0e+13` |
 | `CUDA out of memory` | lower `train.batch_size` (or `--micro_batch_size`) and raise `grad_accum_steps` to keep the global batch |
 | `model.vocab_size ... is smaller than the data tokenizer's vocabulary` | the data uses a bigger tokenizer; set `model.vocab_size` to `meta.json`'s `vocab_size` |
 | `Train split has N tokens; need more than context_length` | dataset too small; lower `model.context_length` or add data |
