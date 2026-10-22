@@ -24,7 +24,8 @@ is reorganised into a reusable package and extended with:
 **Result:** a GPT-2 124M trained from scratch with this repo on 10B tokens of FineWeb-Edu
 scores **30.6% on HellaSwag, beating OpenAI's GPT-2 124M (29.6%)**. See
 [Reference results](#reference-results) and
-[results/gpt2_124m_fineweb](results/gpt2_124m_fineweb/README.md).
+[results/gpt2_124m_fineweb](results/gpt2_124m_fineweb/README.md). The trained model is on
+Hugging Face: [Anjaneyalu/gpt2-124m-fineweb-edu](https://huggingface.co/Anjaneyalu/gpt2-124m-fineweb-edu).
 
 ---
 

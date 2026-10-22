@@ -87,4 +87,12 @@ at step 2 from allocator fragmentation.
 | `loss.png` | train / val loss plot written by `train.py` |
 | `gpt2_hellaswag.png`, `gpt2_val_loss.png` | the charts above, made by `make_charts.py` |
 
-The trained weights (~500 MB) are not in git.
+The trained weights (~500 MB) are not in git. They are on Hugging Face as
+[Anjaneyalu/gpt2-124m-fineweb-edu](https://huggingface.co/Anjaneyalu/gpt2-124m-fineweb-edu),
+converted with `export_hf.py`, and load with plain `transformers`:
+
+```python
+from transformers import pipeline
+generator = pipeline("text-generation", model="Anjaneyalu/gpt2-124m-fineweb-edu")
+print(generator("Photosynthesis is the process", max_new_tokens=40)[0]["generated_text"])
+```
