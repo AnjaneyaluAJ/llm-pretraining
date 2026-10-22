@@ -112,6 +112,7 @@ llm-pretraining/
 ├── hellaswag.py             zero-shot HellaSwag accuracy of any checkpoint
 ├── generate.py              text generation (one-shot or interactive, base or instruction mode)
 ├── import_gpt2.py           download OpenAI GPT-2 weights -> checkpoint
+├── export_hf.py             GPT checkpoint -> Hugging Face transformers format (GPT2LMHeadModel)
 ├── finetune.py              instruction finetuning, writes test-set responses
 ├── score_responses.py       LLM-judge scoring of responses (Ollama)
 ├── configs/
@@ -483,6 +484,18 @@ torchrun --standalone --nproc_per_node=4 hellaswag.py --checkpoint pretrained/gp
 OpenAI's GPT-2 124M scores 29.58% acc_norm with this code (29.55% in karpathy/build-nanogpt).
 The full set takes about 2 minutes on 4 A10G GPUs; `--limit N` scores only the first N examples.
 Set `train.hellaswag_every` to track it during pretraining.
+
+### Export to Hugging Face transformers
+
+`export_hf.py` converts a GPT-style checkpoint to `GPT2LMHeadModel` (safetensors + GPT-2 tokenizer),
+checks that both models give the same logits, and saves a folder that loads with plain `transformers`:
+
+```bash
+python export_hf.py --checkpoint runs/my_run/ckpt_best.pt --out hf/my-gpt2
+python -c "from transformers import pipeline; print(pipeline('text-generation', 'hf/my-gpt2')('Hello'))"
+```
+
+Needs `uv pip install transformers`. Llama-style models are not supported by this exporter.
 
 ---
 
