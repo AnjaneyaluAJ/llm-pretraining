@@ -20,7 +20,7 @@ def build_optimizer(model: nn.Module, tc: TrainConfig, device: torch.device) -> 
         {"params": no_decay, "weight_decay": 0.0},
     ]
     return torch.optim.AdamW(groups, lr=tc.lr, betas=(tc.beta1, tc.beta2),
-                             fused=device.type == "cuda")
+                             fused=tc.fused_adamw and device.type == "cuda")
 
 
 def lr_at(step: int, tc: TrainConfig, total_steps: int) -> float:

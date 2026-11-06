@@ -50,6 +50,9 @@ def resolve_model_config(raw: dict) -> ModelConfig:
 
     if cfg.type not in MODEL_TYPES:
         raise ValueError(f"model.type must be one of {sorted(MODEL_TYPES)}, got {cfg.type!r}")
+    from llmtrain.models.attention import ATTN_IMPLS
+    if cfg.attn_impl not in ATTN_IMPLS:
+        raise ValueError(f"model.attn_impl must be one of {ATTN_IMPLS}, got {cfg.attn_impl!r}")
     if cfg.emb_dim % cfg.n_heads:
         raise ValueError("model.emb_dim must be divisible by model.n_heads")
     if cfg.type == "llama":

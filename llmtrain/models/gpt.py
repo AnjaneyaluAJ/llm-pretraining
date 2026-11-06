@@ -3,7 +3,8 @@
 Parameter names match the book's GPTModel (tok_emb, pos_emb, trf_blocks.N.att.W_query,
 ...), so weights loaded with the book's GPT-2 loaders map onto this model. The only
 change in the math is that attention uses PyTorch's fused scaled_dot_product_attention
-(FlashAttention on A100) instead of an explicit mask + softmax.
+(FlashAttention on A100) instead of an explicit mask + softmax; model.attn_impl=manual
+restores the book's version.
 """
 
 from __future__ import annotations
@@ -13,6 +14,8 @@ import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+from llmtrain.models.attention import causal_attention
 
 
 class LayerNorm(nn.Module):
@@ -37,6 +40,7 @@ class MultiHeadAttention(nn.Module):
         self.W_value = nn.Linear(d, d, bias=cfg.qkv_bias)
         self.out_proj = nn.Linear(d, d)
         self.dropout_p = cfg.drop_rate
+        self.attn_impl = cfg.attn_impl
 
     def forward(self, x):
         b, t, d = x.shape
@@ -44,9 +48,9 @@ class MultiHeadAttention(nn.Module):
         q = self.W_query(x).view(b, t, self.n_heads, self.head_dim).transpose(1, 2)
         k = self.W_key(x).view(b, t, self.n_heads, self.head_dim).transpose(1, 2)
         v = self.W_value(x).view(b, t, self.n_heads, self.head_dim).transpose(1, 2)
-        out = F.scaled_dot_product_attention(
-            q, k, v, is_causal=True, dropout_p=self.dropout_p if self.training else 0.0)
-        out = out.transpose(1, 2).reshape(b, t, d)
+        out = causal_attention(q, k, v, self.attn_impl,
+                               dropout_p=self.dropout_p if self.training else 0.0)
+        out = out.transpose(1, 2).reshape(b, t, -1)  # -1: local heads under tensor parallel
         return self.out_proj(out)
 
 

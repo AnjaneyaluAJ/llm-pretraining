@@ -1,0 +1,4 @@
+{"gpu": 0, "name": "NVIDIA A10G", "fp32_tflops": 23.5, "tf32_tflops": 34.0, "bf16_tflops": 67.7}
+{"gpu": 1, "name": "NVIDIA A10G", "fp32_tflops": 23.7, "tf32_tflops": 34.0, "bf16_tflops": 68.3}
+{"gpu": 2, "name": "NVIDIA A10G", "fp32_tflops": 23.5, "tf32_tflops": 33.9, "bf16_tflops": 68.0}
+{"gpu": 3, "name": "NVIDIA A10G", "fp32_tflops": 23.5, "tf32_tflops": 34.0, "bf16_tflops": 68.1}

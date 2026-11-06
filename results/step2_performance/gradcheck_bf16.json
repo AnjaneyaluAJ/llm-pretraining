@@ -1,0 +1,155 @@
+[
+  {
+    "run": "ddp",
+    "tensors": 160,
+    "missing": [],
+    "extra": [],
+    "rel_l2_err": 0.0008913510828278959,
+    "worst_tensor_rel_err": 0.004234937485307455,
+    "cosine": 0.9999995827674866
+  },
+  {
+    "run": "ddp_bf16grads",
+    "tensors": 160,
+    "missing": [],
+    "extra": [],
+    "rel_l2_err": 0.0024625433143228292,
+    "worst_tensor_rel_err": 0.004854532890021801,
+    "cosine": 0.999997079372406
+  },
+  {
+    "run": "ddp_tuned",
+    "tensors": 160,
+    "missing": [],
+    "extra": [],
+    "rel_l2_err": 0.000890358118340373,
+    "worst_tensor_rel_err": 0.004186715930700302,
+    "cosine": 0.9999997019767761
+  },
+  {
+    "run": "fsdp",
+    "tensors": 160,
+    "missing": [],
+    "extra": [],
+    "rel_l2_err": 0.0008773824665695429,
+    "worst_tensor_rel_err": 0.004188541788607836,
+    "cosine": 0.9999997615814209
+  },
+  {
+    "run": "fsdp_bf16",
+    "tensors": 160,
+    "missing": [],
+    "extra": [],
+    "rel_l2_err": 0.0018560511525720358,
+    "worst_tensor_rel_err": 0.007638878189027309,
+    "cosine": 0.9999983906745911
+  },
+  {
+    "run": "fsdp_noreshard",
+    "tensors": 160,
+    "missing": [],
+    "extra": [],
+    "rel_l2_err": 0.000879019673448056,
+    "worst_tensor_rel_err": 0.004197362810373306,
+    "cosine": 0.9999997019767761
+  },
+  {
+    "run": "pp_1f1b",
+    "tensors": 160,
+    "missing": [],
+    "extra": [],
+    "rel_l2_err": 0.0014799130149185658,
+    "worst_tensor_rel_err": 0.005252806469798088,
+    "cosine": 0.9999991655349731
+  },
+  {
+    "run": "pp_gpipe",
+    "tensors": 160,
+    "missing": [],
+    "extra": [],
+    "rel_l2_err": 0.0014776830794289708,
+    "worst_tensor_rel_err": 0.005290943663567305,
+    "cosine": 0.9999992251396179
+  },
+  {
+    "run": "pp_interleaved",
+    "tensors": 160,
+    "missing": [],
+    "extra": [],
+    "rel_l2_err": 0.0014733577845618129,
+    "worst_tensor_rel_err": 0.005226772744208574,
+    "cosine": 0.9999990463256836
+  },
+  {
+    "run": "pp_split7",
+    "tensors": 160,
+    "missing": [],
+    "extra": [],
+    "rel_l2_err": 0.0014764771331101656,
+    "worst_tensor_rel_err": 0.005244374740868807,
+    "cosine": 0.9999991655349731
+  },
+  {
+    "run": "single",
+    "tensors": 160,
+    "missing": [],
+    "extra": [],
+    "rel_l2_err": 0.0,
+    "worst_tensor_rel_err": 0.0,
+    "cosine": 1.0
+  },
+  {
+    "run": "single_ckpt",
+    "tensors": 160,
+    "missing": [],
+    "extra": [],
+    "rel_l2_err": 0.0008819412323646247,
+    "worst_tensor_rel_err": 0.004236661363393068,
+    "cosine": 0.9999997019767761
+  },
+  {
+    "run": "single_micro4",
+    "tensors": 160,
+    "missing": [],
+    "extra": [],
+    "rel_l2_err": 0.0014772714348509908,
+    "worst_tensor_rel_err": 0.005243420135229826,
+    "cosine": 0.9999990463256836
+  },
+  {
+    "run": "tp",
+    "tensors": 160,
+    "missing": [],
+    "extra": [],
+    "rel_l2_err": 0.0014269159873947501,
+    "worst_tensor_rel_err": 0.005188596900552511,
+    "cosine": 0.9999990463256836
+  },
+  {
+    "run": "tp_shared",
+    "tensors": 160,
+    "missing": [],
+    "extra": [],
+    "rel_l2_err": 0.0014293785206973553,
+    "worst_tensor_rel_err": 0.005208940710872412,
+    "cosine": 0.9999992251396179
+  },
+  {
+    "run": "tp_sp",
+    "tensors": 160,
+    "missing": [],
+    "extra": [],
+    "rel_l2_err": 0.0014296770095825195,
+    "worst_tensor_rel_err": 0.005165044218301773,
+    "cosine": 0.9999993443489075
+  },
+  {
+    "run": "tp_sp_shared",
+    "tensors": 160,
+    "missing": [],
+    "extra": [],
+    "rel_l2_err": 0.0014299722388386726,
+    "worst_tensor_rel_err": 0.005185989663004875,
+    "cosine": 0.9999992251396179
+  }
+]

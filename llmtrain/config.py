@@ -33,6 +33,7 @@ class ModelConfig:
     hidden_dim: Optional[int] = None    # SwiGLU width; defaults to ~8/3 * emb_dim
     rope_theta: float = 10_000.0
     norm_eps: float = 1e-5
+    attn_impl: str = "sdpa"             # "sdpa" (fused / FlashAttention) or "manual" (mask + softmax)
 
 
 @dataclass
@@ -64,6 +65,8 @@ class TrainConfig:
     # performance
     precision: str = "bf16"             # "bf16" (autocast) or "fp32"
     compile: bool = False
+    tf32: bool = True                   # TF32 tensor cores for fp32 matmuls
+    fused_adamw: bool = True            # single-kernel AdamW (False = PyTorch's default foreach AdamW)
     peak_flops: float = 312e12          # per-GPU peak used for MFU; A100 bf16 dense = 312 TFLOP/s
     # evaluation and logging
     log_every: int = 1
