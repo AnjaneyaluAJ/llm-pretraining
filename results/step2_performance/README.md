@@ -734,9 +734,12 @@ Exact per-run numbers, including the worst single tensor: [`gradcheck_fp32.json`
   throughput numbers; it showed up only as "0 ms hidden" in a trace. The tensor-parallel
   inefficiency showed up only when the collectives in the trace were counted against the
   model.
-- **Check gradients, not just speed.** A one-step gradient comparison against one GPU caught
-  a real bug during development: the first FSDP version synchronized gradients on every
-  micro-batch instead of once per step (fixed with `set_requires_gradient_sync`).
+- **Check gradients, and treat a speed result that does not fit the model as a bug.** The
+  one-step gradient comparison shows every strategy computes the same math. Speed needs its
+  own check: the first FSDP version synchronized gradients on every micro-batch instead of once
+  per step (fixed with `set_requires_gradient_sync`). Its gradients were still correct, so the
+  gradient check could not catch it; it showed up because FSDP gained nothing from gradient
+  accumulation, which the communication model said it should.
 
 ---
 
