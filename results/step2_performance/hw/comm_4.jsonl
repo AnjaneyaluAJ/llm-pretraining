@@ -1,0 +1,6 @@
+{"world": 4, "mb": 1, "all_reduce_busbw_gbs": 4.31, "all_gather_busbw_gbs": 4.03, "reduce_scatter_busbw_gbs": 3.73}
+{"world": 4, "mb": 8, "all_reduce_busbw_gbs": 4.73, "all_gather_busbw_gbs": 4.09, "reduce_scatter_busbw_gbs": 4.61}
+{"world": 4, "mb": 64, "all_reduce_busbw_gbs": 4.94, "all_gather_busbw_gbs": 4.15, "reduce_scatter_busbw_gbs": 4.92}
+{"world": 4, "mb": 256, "all_reduce_busbw_gbs": 4.98, "all_gather_busbw_gbs": 4.1, "reduce_scatter_busbw_gbs": 4.91}
+{"world": 4, "mb": 512, "all_reduce_busbw_gbs": 4.95, "all_gather_busbw_gbs": 4.07, "reduce_scatter_busbw_gbs": 4.92}
+nccl 2.30.7

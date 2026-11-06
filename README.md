@@ -20,12 +20,20 @@ is reorganised into a reusable package and extended with:
 - evaluation: loss, perplexity, next-token accuracy and bits-per-byte, during training and standalone
 - loading OpenAI's GPT-2 weights, instruction finetuning, and LLM-judge scoring
 - the HellaSwag benchmark, standalone and during training
+- performance benchmarks: a speed-up ablation on one GPU, and DDP, FSDP2, tensor parallel and
+  pipeline parallel compared on the same model, with a gradient-equivalence check of every strategy
 
 **Result:** a GPT-2 124M trained from scratch with this repo on 10B tokens of FineWeb-Edu
 scores **30.6% on HellaSwag, beating OpenAI's GPT-2 124M (29.6%)**. See
 [Reference results](#reference-results) and
 [results/gpt2_124m_fineweb](results/gpt2_124m_fineweb/README.md). The trained model is on
 Hugging Face: [Anjaneyalu/gpt2-124m-fineweb-edu](https://huggingface.co/Anjaneyalu/gpt2-124m-fineweb-edu).
+
+**Performance:** the same model trains **3.9x faster** on one GPU after seven measured changes
+(15% -> 58% MFU), and on PCIe-connected GPUs data parallelism with bf16 gradients scales to
+**3.5x on 4 GPUs** while tensor parallelism is slower than one GPU. See
+[Performance and multi-GPU benchmarks](#performance-and-multi-gpu-benchmarks) and
+[results/step2_performance](results/step2_performance/README.md).
 
 ---
 
@@ -41,12 +49,13 @@ Hugging Face: [Anjaneyalu/gpt2-124m-fineweb-edu](https://huggingface.co/Anjaneya
 8. [Step 4 - Generate text](#step-4---generate-text)
 9. [Step 5 - Instruction finetuning](#step-5---instruction-finetuning)
 10. [Step 6 - Score responses with an LLM judge](#step-6---score-responses-with-an-llm-judge)
-11. [Configuration reference](#configuration-reference)
-12. [Reference results](#reference-results)
-13. [Running long jobs](#running-long-jobs)
-14. [Troubleshooting](#troubleshooting)
-15. [Mapping to the book](#mapping-to-the-book)
-16. [Credits and references](#credits-and-references)
+11. [Performance and multi-GPU benchmarks](#performance-and-multi-gpu-benchmarks)
+12. [Configuration reference](#configuration-reference)
+13. [Reference results](#reference-results)
+14. [Running long jobs](#running-long-jobs)
+15. [Troubleshooting](#troubleshooting)
+16. [Mapping to the book](#mapping-to-the-book)
+17. [Credits and references](#credits-and-references)
 
 ---
 
@@ -72,8 +81,8 @@ python generate.py --checkpoint runs/sft_gpt2_355m/model.pt --instruct --prompt 
 
 ## Setup
 
-The repo has its own virtual environment in `.venv` (Python 3.12, PyTorch 2.14 + CUDA 13.2).
-To recreate it:
+The repo has its own virtual environment in `.venv` (Python 3.12, PyTorch 2.14 + CUDA 13.2;
+the step 2 benchmarks used PyTorch 2.15). To recreate it:
 
 ```bash
 cd ~/AJ/llm-pretraining
@@ -123,14 +132,21 @@ llm-pretraining/
 │   └── gpt2_124m_fineweb_a10g.yaml  the run in results/: GPT-2 124M, FineWeb-Edu 10B, 4x A10G
 ├── scripts/
 │   ├── run_verdict.sh       end-to-end test: prepare -> train -> evaluate -> generate
-│   └── download_fineweb_edu.py  fast parquet download of a FineWeb-Edu sample
+│   ├── download_fineweb_edu.py  fast parquet download of a FineWeb-Edu sample
+│   ├── bench_hw.py          measured matmul peak and NCCL bandwidth of the machine
+│   ├── bench_parallel.py    one GPT-2 training benchmark per strategy: single, ddp, fsdp, tp, pp
+│   ├── gradcheck.sh         one-step gradients of every strategy, compared with one GPU
+│   ├── compare_grads.py     the comparison behind gradcheck.sh
+│   ├── run_step2.sh         the full step 2 measurement campaign
+│   ├── analyze_step2.py     campaign output -> tables and summary.json
+│   └── repro/               minimal scripts for the DDP overlap observation
 ├── results/                 write-ups, metrics and charts of finished runs
 ├── data/
 │   ├── raw/the-verdict.txt          pretraining test text (book ch02)
 │   └── instruct/instruction-data.json  1,100 instruction examples (book ch07)
 ├── llmtrain/                the library behind the scripts
 │   ├── config.py            dataclass configs, YAML loading, --set overrides
-│   ├── models/              gpt.py (GPT-2), llama.py (Llama 3), presets, build_model
+│   ├── models/              gpt.py (GPT-2), llama.py (Llama 3), attention.py (SDPA or manual), presets, build_model
 │   ├── data.py              memory-mapped token windows, distributed samplers
 │   ├── evaluation.py        distributed loss / perplexity / accuracy / bits-per-byte
 │   ├── hellaswag.py         distributed HellaSwag scoring
@@ -349,8 +365,8 @@ than on 1 (The Verdict: 90 steps on 1 GPU, 20 on 8). Raise `train.epochs` or low
 ```
 model: gpt 162.4M params | layers=12 d=768 heads=12 ctx=256
 data:  gpt2 | train 4,631 tok (18 windows) | val 514 tok (2 windows)
-run:   8 GPU(s) x batch 2 x accum 1 = 4,096 tok/step | 2 steps/epoch | 20 steps total | bf16
-Ep 1 (Step 000001/20) | loss 10.9935 | lr 5.00e-04 | 14,981 tok/s | MFU 0.6%
+run:   8 GPU(s) x batch 2 x accum 1 = 4,096 tok/step | 2 steps/epoch | 20 steps total | bf16 | attn sdpa | tf32 on | fused AdamW on
+Ep 1 (Step 000001/20) | loss 10.9935 | lr 5.00e-04 | 14,981 tok/s | MFU 0.6% | mem <peak GB>
   eval step 5: train loss 7.166, val loss 7.969, val ppl 2891.24, val acc 6.6%
   sample: 'Every effort moves you know, and my a little of the picture to me, ...'
 done: 20 steps, 81,920 tokens, best val loss 6.2049 (ppl 495.15)
@@ -360,6 +376,7 @@ done: 20 steps, 81,920 tokens, best val loss 6.2049 (ppl 495.15)
 - `grad`: gradient norm before clipping (shown when `grad_clip` is set)
 - `tok/s`, `MFU`: throughput, and model FLOPs utilisation against `train.peak_flops`
   (A100 bf16 = 312 TFLOP/s per GPU)
+- `mem`: peak GPU memory allocated so far on this GPU (also logged as `peak_mem_gb`)
 - `eval`: loss / perplexity / accuracy over the train and val splits (`eval_batches` caps it)
 - `sample`: generated text from `train.sample_prompt`
 
@@ -688,6 +705,45 @@ judge: llama3
 
 ---
 
+## Performance and multi-GPU benchmarks
+
+Tools to measure how fast training runs and how it splits across GPUs. Full write-up, every
+option and all results: [results/step2_performance](results/step2_performance/README.md).
+
+```bash
+# what the hardware can do: matmul TFLOP/s per GPU, NCCL bandwidth between GPUs
+python scripts/bench_hw.py matmul
+torchrun --standalone --nproc_per_node=2 scripts/bench_hw.py comm
+
+# one strategy at a time, same model, data and global batch
+python scripts/bench_parallel.py --strategy single
+torchrun --standalone --nproc_per_node=2 scripts/bench_parallel.py --strategy ddp --ddp_bf16_grads
+torchrun --standalone --nproc_per_node=2 scripts/bench_parallel.py --strategy fsdp --fsdp_bf16
+torchrun --standalone --nproc_per_node=2 scripts/bench_parallel.py --strategy tp --tp_shared_input
+torchrun --standalone --nproc_per_node=2 scripts/bench_parallel.py --strategy pp --microbatches 8 --pp_split 9
+
+# add --profile DIR for a compute / communication time breakdown,
+# or check that a strategy computes the same gradients as one GPU
+bash scripts/gradcheck.sh bf16
+
+# the whole campaign (about 3.5 h on 4x A10G), then the tables
+bash scripts/run_step2.sh
+python scripts/analyze_step2.py /mnt/nvme/runs/step2 --hw /mnt/nvme/runs/hw --out results/step2_performance
+```
+
+The speed-ups themselves are ordinary `train.py` settings, so the single-GPU ladder is
+`train.py` with `--set` overrides:
+
+```bash
+# slowest: everything off
+python train.py --config configs/gpt2_124m_fineweb_a10g.yaml --set train.precision=fp32 train.tf32=false \
+    model.attn_impl=manual train.fused_adamw=false train.compile=false model.vocab_size=50257
+# fastest: everything on
+python train.py --config configs/gpt2_124m_fineweb_a10g.yaml --set train.compile=true model.vocab_size=50304
+```
+
+---
+
 ## Configuration reference
 
 A config YAML has three sections. Anything not set uses the defaults in
@@ -709,6 +765,7 @@ A config YAML has three sections. Anything not set uses the defaults in
 | `n_kv_heads` | `n_heads` | llama: key/value heads for grouped-query attention |
 | `hidden_dim` | ~8/3 x `emb_dim` | llama: SwiGLU width |
 | `rope_theta`, `norm_eps` | `10000`, `1e-5` | llama: RoPE base, RMSNorm epsilon |
+| `attn_impl` | `sdpa` | `sdpa` (PyTorch `scaled_dot_product_attention`, flash attention on supported GPUs) or `manual` (the textbook computation written out; slower, more memory; for comparisons) |
 
 Presets:
 
@@ -751,8 +808,10 @@ shapes but use the data's tokenizer.
 | `beta1`, `beta2` | `0.9`, `0.95` | AdamW betas (book: 0.9 / 0.999) |
 | `grad_clip` | `1.0` | max gradient norm; `null` disables |
 | `precision` | `bf16` | `bf16` autocast or `fp32` |
+| `tf32` | `true` | allow TF32 for fp32 matmuls and convolutions |
+| `fused_adamw` | `true` | fused AdamW kernel on CUDA |
 | `compile` | `false` | `torch.compile` (slower start, faster steps) |
-| `peak_flops` | `312e12` | per-GPU peak for the MFU estimate (A100 312e12, H100 989e12, A10G ~70e12); in YAML write `7.0e+13`, since `70e12` is read as a string |
+| `peak_flops` | `312e12` | per-GPU peak for the MFU estimate (A100 312e12, H100 989e12; A10G measured 68e12 with `scripts/bench_hw.py`); in YAML write `6.8e+13`, since `68e12` is read as a string |
 | `log_every` | `1` | steps between log lines |
 | `eval_every` | `5` | steps between evaluations |
 | `eval_batches` | all | per-GPU batch cap per evaluation |
@@ -811,6 +870,24 @@ train:
 ![HellaSwag during training](results/gpt2_124m_fineweb/gpt2_hellaswag.png)
 
 Measured on this server (8x A100 80GB).
+
+**Training speed and multi-GPU strategies, GPT-2 124M** (4x A10G 24 GB, PCIe only).
+Full write-up in [results/step2_performance](results/step2_performance/README.md).
+
+| one GPU | tokens/s | MFU |
+|---|---|---|
+| fp32, manual attention, unfused AdamW, eager, vocab 50257 | 11,981 | 15.1% |
+| + TF32, bf16, flash attention, fused AdamW, `torch.compile`, vocab 50304, batch 16 | 46,222 (3.86x) | 58.5% |
+
+| speed-up over one GPU, same global batch | 2 GPUs, batch 32 | 4 GPUs, batch 128 |
+|---|---|---|
+| DDP | 1.41x | 3.23x |
+| DDP, bf16 gradient all-reduce | 1.62x | 3.51x |
+| FSDP2, bf16 params | 1.60x (no reshard) | 3.42x |
+| pipeline parallel, balanced 9/3 split | 1.25x | |
+| tensor parallel | 0.46x | |
+
+![Multi-GPU speed-up](results/step2_performance/charts/step2_multigpu.png)
 
 **Pretraining GPT-2 124M on The Verdict** (`configs/gpt2_verdict.yaml`, 10 epochs):
 
@@ -882,6 +959,10 @@ restart it with `--set train.resume=auto`.
 | `OMP_NUM_THREADS` warning from torchrun | harmless |
 | `No Ollama server at ...` | start Ollama (`ollama serve`) and `ollama pull llama3` |
 | loss is `nan` | lower `lr`, set `grad_clip: 1.0`, keep `precision: bf16` |
+| `NVRM: No NVIDIA devices probed` after installing the driver | `nouveau` claimed the GPUs: blacklist it in `/etc/modprobe.d/blacklist-nouveau.conf`, `sudo update-initramfs -u`, reboot |
+| internal assert in `reducer.cpp` with DDP | `static_graph=True` with `no_sync()` accumulation; leave `static_graph` off |
+| `python -m venv` fails with "ensurepip is not available" | use `uv venv` |
+| more benchmark-specific problems | see [results/step2_performance](results/step2_performance/README.md#troubleshooting) |
 
 ---
 
@@ -890,7 +971,7 @@ restart it with `--set train.resume=auto`.
 | book chapter | here |
 |---|---|
 | ch02 - text data, tokenization, sliding windows | `prepare_data.py`, `llmtrain/tokenizer.py`, `llmtrain/data.py` |
-| ch03 - attention | `MultiHeadAttention` in `llmtrain/models/gpt.py` (fused `scaled_dot_product_attention`) |
+| ch03 - attention | `MultiHeadAttention` in `llmtrain/models/gpt.py` (fused `scaled_dot_product_attention`; the book's step-by-step version is `attn_impl: manual` in `llmtrain/models/attention.py`) |
 | ch04 - GPT model | `llmtrain/models/gpt.py` (same parameter names as the book) |
 | ch05 - pretraining, loss, generation, OpenAI weights | `train.py`, `llmtrain/evaluation.py`, `llmtrain/generation.py`, `import_gpt2.py` |
 | ch05 bonus - Llama 3 | `llmtrain/models/llama.py` |
@@ -928,12 +1009,15 @@ described above:
 Added in this repository: the package structure, multi-GPU (DDP) training and evaluation,
 bf16 / `torch.compile`, the YAML config system, the general-purpose data pipeline
 (`prepare_data.py`), checkpointing and resume, evaluation metrics (accuracy,
-bits-per-byte), metric tracking, and the command-line tools.
+bits-per-byte), metric tracking, the command-line tools, and the performance and
+multi-GPU benchmarks (FSDP2, tensor and pipeline parallel, gradient-equivalence checks).
 
 Other sources:
 
 - **GPT-2 weights:** OpenAI, [openai/gpt-2](https://github.com/openai/gpt-2), downloaded by `import_gpt2.py`.
 - **Tokenizer:** OpenAI [tiktoken](https://github.com/openai/tiktoken).
+- **Speed-ups and GPT-2 reproduction recipe:** Andrej Karpathy, [build-nanogpt](https://github.com/karpathy/build-nanogpt) and [llm.c](https://github.com/karpathy/llm.c) (vocab padding to 50304, fused AdamW, MFU accounting, HellaSwag reference score).
+- **Parallelism:** PyTorch DDP, FSDP2, DTensor tensor parallelism and `torch.distributed.pipelining`; the tensor-parallel plan follows [torchtitan](https://github.com/pytorch/torchtitan) and Megatron-LM (Shoeybi et al., 2019).
 - **"The Verdict":** a 1908 short story by Edith Wharton (public domain), as used in the book.
 - **Instruction prompt template:** the Alpaca format from [Stanford Alpaca](https://github.com/tatsu-lab/stanford_alpaca), as used in the book.
 

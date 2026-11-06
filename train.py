@@ -62,8 +62,8 @@ def main():
     d = setup_distributed()
     log = print if d.is_main else (lambda *a, **k: None)
 
-    torch.backends.cuda.matmul.allow_tf32 = True
-    torch.backends.cudnn.allow_tf32 = True
+    torch.backends.cuda.matmul.allow_tf32 = tc.tf32
+    torch.backends.cudnn.allow_tf32 = tc.tf32
 
     out_dir = Path(tc.out_dir)
     if d.is_main:
@@ -126,7 +126,8 @@ def main():
         f"val {val_ds.n_tokens:,} tok ({len(val_ds):,} windows)")
     log(f"run:   {d.world_size} GPU(s) x batch {tc.batch_size} x accum {ga} = "
         f"{tokens_per_step:,} tok/step | {steps_per_epoch} steps/epoch | {total_steps} steps total | "
-        f"{tc.precision}{' + compile' if tc.compile else ''}")
+        f"{tc.precision}{' + compile' if tc.compile else ''} | attn {mc.attn_impl} | "
+        f"tf32 {'on' if tc.tf32 else 'off'} | fused AdamW {'on' if tc.fused_adamw else 'off'}")
 
     logger = MetricsLogger(tc.out_dir, tc.tensorboard) if d.is_main else None
 
@@ -194,11 +195,13 @@ def main():
             mfu = flops_tok * tok_s / (tc.peak_flops * d.world_size)
             t_last, step_last, paused = time.time(), step, 0.0
             gn = f" | grad {grad_norm.item():.2f}" if grad_norm is not None else ""
+            mem_gb = torch.cuda.max_memory_allocated(d.device) / 1e9 if d.device.type == "cuda" else 0.0
             log(f"Ep {epoch + 1} (Step {step:06d}/{total_steps}) | loss {loss_val:.4f} | lr {lr:.2e}{gn} | "
-                f"{tok_s:,.0f} tok/s | MFU {100 * mfu:.1f}%")
+                f"{tok_s:,.0f} tok/s | MFU {100 * mfu:.1f}% | mem {mem_gb:.1f} GB")
             if logger:
                 logger.log(step, **{"train/step_loss": loss_val, "lr": lr, "tokens_seen": tokens_seen,
                                     "epoch": epoch + 1, "tok_per_s": tok_s, "mfu": mfu,
+                                    "peak_mem_gb": mem_gb,
                                     **({"grad_norm": grad_norm.item()} if grad_norm is not None else {})})
 
         t_pause = time.time()

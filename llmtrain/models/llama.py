@@ -14,6 +14,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from llmtrain.models.attention import causal_attention
+
 
 def compute_rope_params(head_dim: int, context_length: int, theta_base: float):
     assert head_dim % 2 == 0, "head_dim must be even for RoPE"
@@ -45,6 +47,7 @@ class GroupedQueryAttention(nn.Module):
         self.W_value = nn.Linear(d, self.n_kv_heads * self.head_dim, bias=False)
         self.out_proj = nn.Linear(d, d, bias=False)
         self.dropout_p = cfg.drop_rate
+        self.attn_impl = cfg.attn_impl
 
     def forward(self, x, cos, sin):
         b, t, d = x.shape
@@ -53,10 +56,9 @@ class GroupedQueryAttention(nn.Module):
         v = self.W_value(x).view(b, t, self.n_kv_heads, self.head_dim).transpose(1, 2)
         q, k = apply_rope(q, cos, sin), apply_rope(k, cos, sin)
         # enable_gqa shares each K/V head across n_heads / n_kv_heads query heads
-        out = F.scaled_dot_product_attention(
-            q, k, v, is_causal=True, enable_gqa=self.n_kv_heads != self.n_heads,
-            dropout_p=self.dropout_p if self.training else 0.0)
-        out = out.transpose(1, 2).reshape(b, t, d)
+        out = causal_attention(q, k, v, self.attn_impl, enable_gqa=self.n_kv_heads != self.n_heads,
+                               dropout_p=self.dropout_p if self.training else 0.0)
+        out = out.transpose(1, 2).reshape(b, t, -1)  # -1: local heads under tensor parallel
         return self.out_proj(out)
 
 

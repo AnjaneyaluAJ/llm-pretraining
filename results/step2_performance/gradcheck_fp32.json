@@ -1,0 +1,137 @@
+[
+  {
+    "run": "ddp",
+    "tensors": 160,
+    "missing": [],
+    "extra": [],
+    "rel_l2_err": 4.385936236417365e-08,
+    "worst_tensor_rel_err": 1.5220187776776584e-07,
+    "cosine": 1.0000001192092896
+  },
+  {
+    "run": "ddp_tuned",
+    "tensors": 160,
+    "missing": [],
+    "extra": [],
+    "rel_l2_err": 3.948183646684811e-08,
+    "worst_tensor_rel_err": 6.144391306861507e-08,
+    "cosine": 1.0000001192092896
+  },
+  {
+    "run": "fsdp",
+    "tensors": 160,
+    "missing": [],
+    "extra": [],
+    "rel_l2_err": 5.8552991788474174e-08,
+    "worst_tensor_rel_err": 2.7969261395810463e-07,
+    "cosine": 1.0000001192092896
+  },
+  {
+    "run": "fsdp_bf16",
+    "tensors": 160,
+    "missing": [],
+    "extra": [],
+    "rel_l2_err": 0.005114415194839239,
+    "worst_tensor_rel_err": 0.009292049333453178,
+    "cosine": 0.9999868273735046
+  },
+  {
+    "run": "fsdp_noreshard",
+    "tensors": 160,
+    "missing": [],
+    "extra": [],
+    "rel_l2_err": 4.361085714776891e-08,
+    "worst_tensor_rel_err": 1.443914783294531e-07,
+    "cosine": 1.0000001192092896
+  },
+  {
+    "run": "pp_1f1b",
+    "tensors": 160,
+    "missing": [],
+    "extra": [],
+    "rel_l2_err": 6.779126238143363e-07,
+    "worst_tensor_rel_err": 1.9890508156095166e-06,
+    "cosine": 1.0
+  },
+  {
+    "run": "pp_interleaved",
+    "tensors": 160,
+    "missing": [],
+    "extra": [],
+    "rel_l2_err": 6.779312116123037e-07,
+    "worst_tensor_rel_err": 1.9892154341505375e-06,
+    "cosine": 1.0000001192092896
+  },
+  {
+    "run": "pp_split7",
+    "tensors": 160,
+    "missing": [],
+    "extra": [],
+    "rel_l2_err": 6.778995498279983e-07,
+    "worst_tensor_rel_err": 1.9892261207132833e-06,
+    "cosine": 1.0000001192092896
+  },
+  {
+    "run": "single",
+    "tensors": 160,
+    "missing": [],
+    "extra": [],
+    "rel_l2_err": 0.0,
+    "worst_tensor_rel_err": 0.0,
+    "cosine": 1.0000001192092896
+  },
+  {
+    "run": "single_ckpt",
+    "tensors": 160,
+    "missing": [],
+    "extra": [],
+    "rel_l2_err": 4.286820498577981e-08,
+    "worst_tensor_rel_err": 2.208413150128763e-07,
+    "cosine": 1.0000001192092896
+  },
+  {
+    "run": "single_micro4",
+    "tensors": 160,
+    "missing": [],
+    "extra": [],
+    "rel_l2_err": 6.779104069210007e-07,
+    "worst_tensor_rel_err": 1.989438260352472e-06,
+    "cosine": 1.0
+  },
+  {
+    "run": "tp",
+    "tensors": 160,
+    "missing": [],
+    "extra": [],
+    "rel_l2_err": 6.329394182102988e-07,
+    "worst_tensor_rel_err": 1.359440830128733e-06,
+    "cosine": 1.0
+  },
+  {
+    "run": "tp_shared",
+    "tensors": 160,
+    "missing": [],
+    "extra": [],
+    "rel_l2_err": 6.334287263598526e-07,
+    "worst_tensor_rel_err": 1.3609486586574349e-06,
+    "cosine": 1.0
+  },
+  {
+    "run": "tp_sp",
+    "tensors": 160,
+    "missing": [],
+    "extra": [],
+    "rel_l2_err": 6.329343023026013e-07,
+    "worst_tensor_rel_err": 1.3630865396407899e-06,
+    "cosine": 1.0
+  },
+  {
+    "run": "tp_sp_shared",
+    "tensors": 160,
+    "missing": [],
+    "extra": [],
+    "rel_l2_err": 6.333767714750138e-07,
+    "worst_tensor_rel_err": 1.3601860473499983e-06,
+    "cosine": 1.0000001192092896
+  }
+]
