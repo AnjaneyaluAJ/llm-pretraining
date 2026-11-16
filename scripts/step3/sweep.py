@@ -83,15 +83,14 @@ def train_one(r, data_dir, scratch, results, keep_ckpt):
             "train.resume=null"]
     cmd = ["torchrun", "--standalone", "--nproc_per_node=4", "train.py",
            "--config", "configs/gpt2_124m_fineweb_a10g.yaml", "--set", *sets]
-    print(f"\n=== {r['name']}: {r['steps']} steps, {r['tokens'] / 1e9:.2f}B tokens, lr {r['lr']}", flush=True)
+    print(f"\n=== RUN {r['name']}: {r['steps']} steps, {r['tokens'] / 1e9:.2f}B tokens, lr {r['lr']}", flush=True)
     out.mkdir(parents=True, exist_ok=True)
     t0 = time.time()
     with open(out / "train.log", "w") as logf:
         p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
         for line in p.stdout:
             logf.write(line)
-            if "tok/s" not in line or "000/" in line:          # keep CloudWatch readable
-                sys.stdout.write(line)
+            sys.stdout.write(line)                             # every 25 steps -> CloudWatch metrics
         rc = p.wait()
     hours = (time.time() - t0) / 3600
     dest.mkdir(parents=True, exist_ok=True)

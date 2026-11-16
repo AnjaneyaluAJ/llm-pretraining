@@ -15,6 +15,15 @@ BUCKETS = {"ap-south-1": f"llm-pretraining-{ACCOUNT}-aps1", "us-east-1": f"llm-p
 ROLE = f"arn:aws:iam::{ACCOUNT}:role/llm-pretraining-sagemaker"
 IMAGE_TAG = "pytorch-training:2.10.0-gpu-py313-cu130-ubuntu22.04-sagemaker"
 REPO = "https://github.com/AnjaneyaluAJ/llm-pretraining.git"
+# Parsed from the job log by SageMaker into CloudWatch metrics (charts on the job page).
+# Train lines: "Ep 1 (Step 000025/3368) | loss 7.28 | lr 3.47e-04 | grad 0.28 | 405,542 tok/s | MFU 31.4% | ..."
+METRICS = [
+    {"Name": "train_loss", "Regex": r"\| loss ([0-9.]+) \|"},
+    {"Name": "val_loss", "Regex": r"val loss ([0-9.]+)"},
+    {"Name": "lr", "Regex": r"\| lr ([0-9.]+e[-+][0-9]+) \|"},
+    {"Name": "mfu_pct", "Regex": r"MFU ([0-9.]+)%"},
+    {"Name": "hellaswag_acc_norm_pct", "Regex": r"acc_norm ([0-9.]+)%"},
+]
 TAGS = [{"Key": "project", "Value": "llm-pretraining"}, {"Key": "owner", "Value": "anjaneyalu.thippaiah"}]
 
 
@@ -74,7 +83,8 @@ def main():
     req = dict(
         TrainingJobName=job, RoleArn=ROLE, Tags=TAGS, Environment=env,
         AlgorithmSpecification={"TrainingImage": IMAGE, "TrainingInputMode": "File",
-                                "ContainerEntrypoint": ["bash", "-c"], "ContainerArguments": [boot]},
+                                "ContainerEntrypoint": ["bash", "-c"], "ContainerArguments": [boot],
+                                "MetricDefinitions": METRICS},
         ResourceConfig={"InstanceType": a.instance, "InstanceCount": 1, "VolumeSizeInGB": a.volume_gb},
         OutputDataConfig={"S3OutputPath": f"s3://{BUCKET}/sagemaker-output/"},
         CheckpointConfig={"S3Uri": f"s3://{BUCKET}/{a.results or 'jobs/' + job}/", "LocalPath": "/opt/ml/checkpoints"},
