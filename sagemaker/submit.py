@@ -52,6 +52,9 @@ def main():
     p.add_argument("--volume_gb", type=int, default=300)
     p.add_argument("--max_hours", type=float, default=2.0)
     p.add_argument("--warm_pool_s", type=int, default=0, help="keep the instance warm this long after the job")
+    p.add_argument("--results", default=None,
+                   help="stable S3 prefix under s3://BUCKET/ for /opt/ml/checkpoints (default jobs/<job>); "
+                        "a rerun with the same prefix sees earlier results and skips finished runs")
     p.add_argument("--env", nargs="*", default=[], metavar="KEY=VALUE")
     p.add_argument("--follow", action="store_true", help="stream logs until the job ends")
     p.add_argument("--logs", default=None, help="only print the logs of this existing job")
@@ -72,7 +75,7 @@ def main():
                                 "ContainerEntrypoint": ["bash", "-c"], "ContainerArguments": [boot]},
         ResourceConfig={"InstanceType": a.instance, "InstanceCount": 1, "VolumeSizeInGB": a.volume_gb},
         OutputDataConfig={"S3OutputPath": f"s3://{BUCKET}/sagemaker-output/"},
-        CheckpointConfig={"S3Uri": f"s3://{BUCKET}/jobs/{job}/", "LocalPath": "/opt/ml/checkpoints"},
+        CheckpointConfig={"S3Uri": f"s3://{BUCKET}/{a.results or 'jobs/' + job}/", "LocalPath": "/opt/ml/checkpoints"},
         StoppingCondition={"MaxRuntimeInSeconds": int(a.max_hours * 3600)},
     )
     if a.warm_pool_s:

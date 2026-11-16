@@ -72,6 +72,7 @@ class TrainConfig:
     log_every: int = 1
     eval_every: int = 5
     eval_batches: Optional[int] = None  # per-GPU batches per eval; null = whole split
+    train_eval_batches: Optional[int] = None  # per-GPU batches for the train-loss eval; null = eval_batches
     sample_every: int = 50
     sample_prompt: str = "Every effort moves you"
     sample_tokens: int = 50

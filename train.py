@@ -133,7 +133,8 @@ def main():
 
     def run_eval() -> dict:
         metrics = {}
-        tr = evaluate(compiled, train_eval_dl, d.device, tc.precision, tc.eval_batches, bytes_per_token)
+        tr = evaluate(compiled, train_eval_dl, d.device, tc.precision,
+                      tc.train_eval_batches or tc.eval_batches, bytes_per_token)
         metrics.update({f"train/{k}": v for k, v in tr.items() if k != "tokens"})
         if val_dl is not None:
             va = evaluate(compiled, val_dl, d.device, tc.precision, tc.eval_batches, bytes_per_token)
