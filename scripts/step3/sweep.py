@@ -42,8 +42,10 @@ def n_total(size):
 
 
 def run_spec(size, budget, lr, seed=123, tag=""):
+    """lr=None means 'auto': the learning rate is set at run time from the fitted rule (see lr_rule)."""
     steps = round(budget / (6 * n_nonemb(size) * TOKENS_PER_STEP))
-    name = f"{size}_C{budget:.0e}_lr{lr:.1e}".replace("+", "") + (f"_seed{seed}" if seed != 123 else "") + tag
+    lr_tag = "auto" if lr is None else f"{lr:.1e}"
+    name = f"{size}_C{budget:.0e}_lr{lr_tag}".replace("+", "") + (f"_seed{seed}" if seed != 123 else "") + tag
     return dict(name=name, size=size, budget=budget, lr=lr, seed=seed, steps=steps,
                 tokens=steps * TOKENS_PER_STEP, n_nonemb=n_nonemb(size), n_total=n_total(size))
 
@@ -51,7 +53,59 @@ def run_spec(size, budget, lr, seed=123, tag=""):
 PHASES = {
     # learning-rate sweep at C = 1e17 on two sizes; these runs double as IsoFLOP points
     "lr": [run_spec(s, 1e17, lr) for s in ("s20", "s85") for lr in (6e-4, 1.2e-3, 2.4e-3)],
+    # phase 2a: finish the learning-rate evidence. s20's best was at the top of the phase-1 grid, so add 4.8e-3.
+    # s85 at 1e17 trains only 749 steps, so its sweep is redone at 3e17 (2,247 steps, close to s20's 3,368).
+    # phase 2b: the rest of the 1e17 and 3e17 IsoFLOP points, learning rate from the rule fitted after 2a.
+    "p2": [run_spec("s20", 1e17, 4.8e-3)] + [run_spec("s85", 3e17, lr) for lr in (3e-4, 6e-4, 1.2e-3)]
+          + [run_spec(s, 1e17, None) for s in ("s10", "s35", "s50")]
+          + [run_spec(s, 3e17, None) for s in ("s20", "s35", "s50", "s135")],
 }
+
+# Learning-rate rule: which (size, budget) sweeps define each size's best learning rate.
+LR_REFERENCES = [("s20", 1e17), ("s85", 3e17)]
+LR_CLIP = (1e-4, 6e-3)
+
+
+def best_lr(points):
+    """points: [(lr, val_loss)] for one size at one budget, lrs a factor-2 grid.
+    Returns (lr_best, how): a parabola through the lowest point and its two neighbours in log2(lr)
+    when the minimum is inside the grid, else the edge value (how='edge', the true best lies beyond it)."""
+    pts = sorted(points)
+    i = min(range(len(pts)), key=lambda k: pts[k][1])
+    if i == 0 or i == len(pts) - 1 or len(pts) < 3:
+        return pts[i][0], "edge"
+    (l0, y0), (l1, y1), (l2, y2) = pts[i - 1], pts[i], pts[i + 1]
+    x0, x1, x2 = math.log2(l0), math.log2(l1), math.log2(l2)
+    denom = (x0 - x1) * (x0 - x2) * (x1 - x2)
+    a = (x2 * (y1 - y0) + x1 * (y0 - y2) + x0 * (y2 - y1)) / denom
+    b = (x2 * x2 * (y0 - y1) + x1 * x1 * (y2 - y0) + x0 * x0 * (y1 - y2)) / denom
+    xv = -b / (2 * a) if a > 0 else x1
+    xv = min(max(xv, x0), x2)                       # never extrapolate past the neighbours
+    return 2 ** xv, "parabola"
+
+
+def lr_rule(results):
+    """Fit lr_best(N) = lr_ref * (N / N_ref)^(-alpha) through the two reference sweeps.
+    results: list of summary dicts (size, budget, lr, val_loss). Returns a dict saved as lr_rule.json."""
+    refs = []
+    for size, budget in LR_REFERENCES:
+        pts = [(r["lr"], r["val_loss"]) for r in results
+               if r["size"] == size and math.isclose(r["budget"], budget) and r.get("val_loss") is not None]
+        if len(pts) < 3:
+            raise RuntimeError(f"learning-rate sweep for {size} at {budget:.0e} has {len(pts)} finished runs, need 3")
+        lr, how = best_lr(pts)
+        refs.append({"size": size, "budget": budget, "n_nonemb": n_nonemb(size), "lr_best": lr, "how": how,
+                     "points": sorted(pts)})
+    (a, b) = refs
+    alpha = -math.log(b["lr_best"] / a["lr_best"]) / math.log(b["n_nonemb"] / a["n_nonemb"])
+    return {"form": "lr(N) = lr_ref * (N / N_ref)^(-alpha), N = non-embedding parameters",
+            "lr_ref": a["lr_best"], "n_ref": a["n_nonemb"], "alpha": alpha, "clip": LR_CLIP, "references": refs}
+
+
+def lr_for(size, rule):
+    lr = rule["lr_ref"] * (n_nonemb(size) / rule["n_ref"]) ** (-rule["alpha"])
+    lr = min(max(lr, rule["clip"][0]), rule["clip"][1])
+    return float(f"{lr:.2g}")                      # two significant digits, as written in configs
 
 
 def last_metric(metrics_path, key):
@@ -122,18 +176,51 @@ def main():
     p.add_argument("--scratch", default=os.environ.get("SCRATCH", "/tmp/scratch"))
     p.add_argument("--results", default="/opt/ml/checkpoints")
     p.add_argument("--keep_ckpt", nargs="*", default=["s200", "s300"], help="sizes whose final checkpoint is kept")
+    p.add_argument("--prior_results", nargs="*", default=[],
+                   help="results.jsonl of earlier phases (path or s3:// URI), used by the learning-rate rule")
     p.add_argument("--dry_run", action="store_true")
     a = p.parse_args()
     runs = PHASES[a.phase]
     print(f"{'run':32s} {'N_nonemb':>9s} {'N_total':>8s} {'steps':>6s} {'tokens':>7s} {'tok/N':>6s}")
     for r in runs:
         print(f"{r['name']:32s} {r['n_nonemb'] / 1e6:8.1f}M {r['n_total'] / 1e6:7.1f}M {r['steps']:6d} "
-              f"{r['tokens'] / 1e9:6.2f}B {r['tokens'] / r['n_nonemb']:6.1f}")
+              f"{r['tokens'] / 1e9:6.2f}B {r['tokens'] / r['n_nonemb']:6.1f}"
+              + ("" if r["lr"] is not None else "  (lr from rule)"))
     if a.dry_run:
         return
-    for r in runs:
+    for r in [r for r in runs if r["lr"] is not None]:
         train_one(r, a.data_dir, a.scratch, a.results, a.keep_ckpt)
+    auto = [r for r in runs if r["lr"] is None]
+    if auto:
+        results = load_results(a.results, a.prior_results)
+        rule = lr_rule(results)
+        for r in auto:
+            r["lr"] = lr_for(r["size"], rule)
+        rule["assigned"] = {r["name"]: r["lr"] for r in auto}
+        json.dump(rule, open(Path(a.results) / "lr_rule.json", "w"), indent=1)
+        print("LR RULE " + json.dumps(rule), flush=True)
+        for r in auto:
+            train_one(r, a.data_dir, a.scratch, a.results, a.keep_ckpt)
     print("SWEEP_DONE", flush=True)
+
+
+def load_results(results_dir, prior):
+    """Summaries of finished runs: this job's results.jsonl plus earlier phases' (local files or s3:// URIs)."""
+    rows = []
+    for src in [str(Path(results_dir) / "results.jsonl")] + list(prior or []):
+        if src.startswith("s3://"):
+            out = subprocess.run(["aws", "s3", "cp", src, "-"], capture_output=True, text=True)
+            if out.returncode != 0:
+                raise RuntimeError(f"could not read {src}: {out.stderr.strip()}")
+            text = out.stdout
+        else:
+            text = Path(src).read_text() if Path(src).exists() else ""
+        rows += [json.loads(l) for l in text.splitlines() if l.strip()]
+    seen, uniq = set(), []
+    for r in rows:                                   # a restarted job can append a run twice
+        if r["name"] not in seen:
+            seen.add(r["name"]); uniq.append(r)
+    return uniq
 
 
 if __name__ == "__main__":

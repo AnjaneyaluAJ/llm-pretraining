@@ -143,13 +143,21 @@ def collect_runs(jobs):
     for j in live:
         pts, current = parse_log(job_log_lines(j["job"]))
         curves += [p for p in pts if p["run"] not in done]
+    assigned = {}
+    for phase in sweep.PHASES:
+        try:
+            rule = json.loads(s3.get_object(Bucket=bucket, Key=f"step3/{phase}/lr_rule.json")["Body"].read())
+            assigned.update(rule.get("assigned", {}))
+        except s3.exceptions.NoSuchKey:
+            pass
     for phase, specs in sweep.PHASES.items():
         for r in specs:
             s = done.get(r["name"])
             status = "done" if s else ("training" if r["name"] == current else "queued")
             runs.append({
                 "run": r["name"], "phase": phase, "size": r["size"], "n_nonemb_m": round(r["n_nonemb"] / 1e6, 1),
-                "n_total_m": round(r["n_total"] / 1e6, 1), "budget_flops": r["budget"], "lr": r["lr"],
+                "n_total_m": round(r["n_total"] / 1e6, 1), "budget_flops": r["budget"],
+                "lr": (s and s.get("lr")) or r["lr"] or assigned.get(r["name"]),
                 "steps": r["steps"], "tokens_b": round(r["tokens"] / 1e9, 3), "status": status,
                 "val_loss": s and s.get("val_loss"), "hellaswag_pct": s and s.get("hellaswag_acc_norm") and
                 round(100 * s["hellaswag_acc_norm"], 2), "hours": s and round(s["hours"], 2),
