@@ -7,14 +7,13 @@
 The job clones --branch of the public GitHub repo, so commit and push before submitting.
 Uses the AWS profile/region from the environment (AWS_PROFILE, AWS_DEFAULT_REGION).
 """
-import argparse, time, datetime
+import argparse, datetime, os, time
 import boto3
 
 ACCOUNT = "670484892721"
-REGION = "ap-south-1"
-BUCKET = f"llm-pretraining-{ACCOUNT}-aps1"
+BUCKETS = {"ap-south-1": f"llm-pretraining-{ACCOUNT}-aps1", "us-east-1": f"llm-pretraining-{ACCOUNT}-use1"}
 ROLE = f"arn:aws:iam::{ACCOUNT}:role/llm-pretraining-sagemaker"
-IMAGE = f"763104351884.dkr.ecr.{REGION}.amazonaws.com/pytorch-training:2.10.0-gpu-py313-cu130-ubuntu22.04-sagemaker"
+IMAGE_TAG = "pytorch-training:2.10.0-gpu-py313-cu130-ubuntu22.04-sagemaker"
 REPO = "https://github.com/AnjaneyaluAJ/llm-pretraining.git"
 TAGS = [{"Key": "project", "Value": "llm-pretraining"}, {"Key": "owner", "Value": "anjaneyalu.thippaiah"}]
 
@@ -48,7 +47,8 @@ def main():
     p.add_argument("--cmd", help="shell command to run from the repo root inside the job")
     p.add_argument("--branch", default="step3-scaling")
     p.add_argument("--data", default=None, help="S3 data prefix under s3://BUCKET/data/ to mount as channel 'train'")
-    p.add_argument("--instance", default="ml.g5.12xlarge")
+    p.add_argument("--region", default=os.environ.get("AWS_DEFAULT_REGION", "ap-south-1"), choices=sorted(BUCKETS))
+    p.add_argument("--instance", default="ml.g5.12xlarge", help="ml.g5.12xlarge (4x A10G) or ml.g6e.12xlarge (4x L40S)")
     p.add_argument("--volume_gb", type=int, default=300)
     p.add_argument("--max_hours", type=float, default=2.0)
     p.add_argument("--warm_pool_s", type=int, default=0, help="keep the instance warm this long after the job")
@@ -60,13 +60,15 @@ def main():
     p.add_argument("--logs", default=None, help="only print the logs of this existing job")
     a = p.parse_args()
 
+    REGION, BUCKET = a.region, BUCKETS[a.region]
+    IMAGE = f"763104351884.dkr.ecr.{REGION}.amazonaws.com/{IMAGE_TAG}"
     sm, logs = boto3.client("sagemaker", region_name=REGION), boto3.client("logs", region_name=REGION)
     if a.logs:
         print_logs(sm, logs, a.logs)
         return
 
     job = f"{a.name}-{datetime.datetime.utcnow():%Y%m%d-%H%M%S}"
-    env = {"JOB_CMD": a.cmd, "BUCKET": BUCKET, "JOB_NAME": job, **dict(kv.split("=", 1) for kv in a.env)}
+    env = {"JOB_CMD": a.cmd, "BUCKET": BUCKET, "AWS_DEFAULT_REGION": REGION, "JOB_NAME": job, **dict(kv.split("=", 1) for kv in a.env)}
     boot = (f"git clone -q --depth 1 -b {a.branch} {REPO} /opt/code && "
             "exec bash /opt/code/sagemaker/entry.sh")
     req = dict(
