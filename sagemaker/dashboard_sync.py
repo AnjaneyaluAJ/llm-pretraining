@@ -134,6 +134,8 @@ def collect_runs(jobs):
             try:
                 summ = json.loads(s3.get_object(Bucket=bucket, Key=key + "summary.json")["Body"].read())
                 done[r["name"]] = summ
+                if summ.get("skipped"):
+                    continue
                 text = s3.get_object(Bucket=bucket, Key=key + "metrics.jsonl")["Body"].read().decode()
                 curves += metrics_points(r["name"], text)
             except s3.exceptions.NoSuchKey:
@@ -153,7 +155,8 @@ def collect_runs(jobs):
     for phase, specs in sweep.PHASES.items():
         for r in specs:
             s = done.get(r["name"])
-            status = "done" if s else ("training" if r["name"] == current else "queued")
+            status = ("skipped" if s and s.get("skipped") else "done") if s else (
+                "training" if r["name"] == current else "queued")
             runs.append({
                 "run": r["name"], "phase": phase, "size": r["size"], "n_nonemb_m": round(r["n_nonemb"] / 1e6, 1),
                 "n_total_m": round(r["n_total"] / 1e6, 1), "budget_flops": r["budget"],

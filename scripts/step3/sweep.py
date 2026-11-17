@@ -59,28 +59,46 @@ PHASES = {
     "p2": [run_spec("s20", 1e17, 4.8e-3)] + [run_spec("s85", 3e17, lr) for lr in (3e-4, 6e-4, 1.2e-3)]
           + [run_spec(s, 1e17, None) for s in ("s10", "s35", "s50")]
           + [run_spec(s, 3e17, None) for s in ("s20", "s35", "s50", "s135")],
+    # phase 2c: p2's two learning-rate references were both at the edge of their grids, so its rule
+    # under-set the larger models' learning rates. Extend the s85 sweep at 3e17, refit with the stricter
+    # best_lr, then rerun every IsoFLOP point whose learning rate moves by more than RERUN_RATIO.
+    "p2c": [run_spec("s85", 3e17, lr) for lr in (2.4e-3, 4.8e-3)]
+           + [run_spec(s, 1e17, None, tag="_r2") for s in ("s10", "s35", "s50")]
+           + [run_spec(s, 3e17, None, tag="_r2") for s in ("s20", "s35", "s50", "s135")],
 }
+RERUN_RATIO = 1.4
 
 # Learning-rate rule: which (size, budget) sweeps define each size's best learning rate.
 LR_REFERENCES = [("s20", 1e17), ("s85", 3e17)]
 LR_CLIP = (1e-4, 6e-3)
 
 
+class EdgeError(RuntimeError):
+    """The best learning rate lies beyond the swept grid, so the sweep must be extended."""
+
+
 def best_lr(points):
-    """points: [(lr, val_loss)] for one size at one budget, lrs a factor-2 grid.
-    Returns (lr_best, how): a parabola through the lowest point and its two neighbours in log2(lr)
-    when the minimum is inside the grid, else the edge value (how='edge', the true best lies beyond it)."""
+    """points: [(lr, val_loss)] for one size at one budget (a factor-2 grid).
+    Fits a parabola in log2(lr) through the lowest point and its two neighbours (at a grid edge:
+    the three points nearest that edge) and returns its vertex. Raises EdgeError when the parabola
+    is not convex or its vertex lies outside the swept range, i.e. the best value was not bracketed."""
     pts = sorted(points)
+    if len(pts) < 3:
+        raise EdgeError(f"need at least 3 learning rates, have {len(pts)}")
     i = min(range(len(pts)), key=lambda k: pts[k][1])
-    if i == 0 or i == len(pts) - 1 or len(pts) < 3:
-        return pts[i][0], "edge"
-    (l0, y0), (l1, y1), (l2, y2) = pts[i - 1], pts[i], pts[i + 1]
+    j = min(max(i - 1, 0), len(pts) - 3)            # first of the three points used
+    (l0, y0), (l1, y1), (l2, y2) = pts[j:j + 3]
     x0, x1, x2 = math.log2(l0), math.log2(l1), math.log2(l2)
     denom = (x0 - x1) * (x0 - x2) * (x1 - x2)
     a = (x2 * (y1 - y0) + x1 * (y0 - y2) + x0 * (y2 - y1)) / denom
     b = (x2 * x2 * (y0 - y1) + x1 * x1 * (y2 - y0) + x0 * x0 * (y1 - y2)) / denom
-    xv = -b / (2 * a) if a > 0 else x1
-    xv = min(max(xv, x0), x2)                       # never extrapolate past the neighbours
+    lo, hi = math.log2(pts[0][0]), math.log2(pts[-1][0])
+    if a <= 0:
+        raise EdgeError(f"loss vs learning rate is not convex around the minimum: {pts}")
+    xv = -b / (2 * a)
+    if not lo <= xv <= hi:
+        raise EdgeError(f"best learning rate {2 ** xv:.2e} lies outside the swept range "
+                        f"[{pts[0][0]:.1e}, {pts[-1][0]:.1e}]: {pts}")
     return 2 ** xv, "parabola"
 
 
@@ -93,7 +111,7 @@ def lr_rule(results):
                if r["size"] == size and math.isclose(r["budget"], budget) and r.get("val_loss") is not None]
         if len(pts) < 3:
             raise RuntimeError(f"learning-rate sweep for {size} at {budget:.0e} has {len(pts)} finished runs, need 3")
-        lr, how = best_lr(pts)
+        lr, how = best_lr(pts)                         # raises EdgeError if not bracketed
         refs.append({"size": size, "budget": budget, "n_nonemb": n_nonemb(size), "lr_best": lr, "how": how,
                      "points": sorted(pts)})
     (a, b) = refs
@@ -197,11 +215,33 @@ def main():
         for r in auto:
             r["lr"] = lr_for(r["size"], rule)
         rule["assigned"] = {r["name"]: r["lr"] for r in auto}
+        rule["skipped"] = {}
+        todo = []
+        for r in auto:
+            prev = [x for x in results if x["size"] == r["size"] and math.isclose(x["budget"], r["budget"])
+                    and x.get("val_loss") is not None and x["name"] != r["name"]]
+            if r["name"].endswith("_r2") and prev:
+                # the earlier point at the closest learning rate; skip the rerun if it is within RERUN_RATIO
+                near = min(prev, key=lambda x: abs(math.log(x["lr"] / r["lr"])))
+                if max(near["lr"], r["lr"]) / min(near["lr"], r["lr"]) <= RERUN_RATIO:
+                    rule["skipped"][r["name"]] = {"kept": near["name"], "kept_lr": near["lr"], "new_lr": r["lr"]}
+                    mark_skipped(r, near, a.results)
+                    continue
+            todo.append(r)
         json.dump(rule, open(Path(a.results) / "lr_rule.json", "w"), indent=1)
         print("LR RULE " + json.dumps(rule), flush=True)
-        for r in auto:
+        for r in todo:
             train_one(r, a.data_dir, a.scratch, a.results, a.keep_ckpt)
     print("SWEEP_DONE", flush=True)
+
+
+def mark_skipped(r, kept, results):
+    """Record that a rerun was not needed: the earlier run already used a learning rate within RERUN_RATIO."""
+    dest = Path(results) / r["name"]
+    dest.mkdir(parents=True, exist_ok=True)
+    json.dump({**r, "skipped": True, "kept": kept["name"], "val_loss": None}, open(dest / "summary.json", "w"), indent=1)
+    (dest / "DONE").touch()
+    print(f"skip {r['name']}: {kept['name']} already used lr {kept['lr']} (new rule: {r['lr']})", flush=True)
 
 
 def load_results(results_dir, prior):
