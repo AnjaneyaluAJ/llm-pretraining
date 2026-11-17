@@ -65,6 +65,10 @@ PHASES = {
     "p2c": [run_spec("s85", 3e17, lr) for lr in (2.4e-3, 4.8e-3)]
            + [run_spec(s, 1e17, None, tag="_r2") for s in ("s10", "s35", "s50")]
            + [run_spec(s, 3e17, None, tag="_r2") for s in ("s20", "s35", "s50", "s135")],
+    # phase 3: the 1e18 IsoFLOP curve. Sizes bracket the N_opt predicted from 1e17/3e17 (77M, pre-registered
+    # in results/step3_scaling/prediction_before_1e18.json before this phase ran). Learning rate from the
+    # phase-2c rule; s200 extrapolates it 2.4x beyond the largest reference size (s85).
+    "p3": [run_spec(s, 1e18, None) for s in ("s50", "s85", "s135", "s200")],
 }
 RERUN_RATIO = 1.4
 
