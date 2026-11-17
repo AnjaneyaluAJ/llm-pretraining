@@ -166,7 +166,7 @@ def collect_runs(jobs):
                 "lr": (s and s.get("lr")) or r["lr"] or assigned.get(r["name"]),
                 "steps": r["steps"], "tokens_b": round(r["tokens"] / 1e9, 3), "status": status,
                 "val_loss": s and s.get("val_loss"), "hellaswag_pct": s and s.get("hellaswag_acc_norm") and
-                round(100 * s["hellaswag_acc_norm"], 2), "hours": s and round(s["hours"], 2),
+                round(100 * s["hellaswag_acc_norm"], 2), "hours": s and s.get("hours") is not None and round(s["hours"], 2) or None,
             })
     return runs, curves
 
