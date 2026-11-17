@@ -157,6 +157,9 @@ def collect_runs(jobs):
             s = done.get(r["name"])
             status = ("skipped" if s and s.get("skipped") else "done") if s else (
                 "training" if r["name"] == current else "queued")
+            phase_jobs = [j for j in jobs if j["job"].startswith(f"step3-{phase}-")]
+            if status == "queued" and phase_jobs and all(j["status"] != "InProgress" for j in phase_jobs):
+                status = "not run"                     # its phase's job ended first (stopped on purpose)
             runs.append({
                 "run": r["name"], "phase": phase, "size": r["size"], "n_nonemb_m": round(r["n_nonemb"] / 1e6, 1),
                 "n_total_m": round(r["n_total"] / 1e6, 1), "budget_flops": r["budget"],
