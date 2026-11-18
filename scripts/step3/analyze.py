@@ -5,7 +5,7 @@
 For each budget C, take each size's best run (lowest validation loss over its learning rates), fit a
 parabola to loss vs ln(N) through the lowest point and its two neighbours, and read off N_opt (vertex),
 L_min and D_opt = C / (6 N_opt). N is non-embedding parameters, C = 6 N D (Kaplan-style counting).
-With two budgets, N_opt(C) and L_min(C) are extrapolated as power laws through them.
+N_opt(C) and L_min(C) are fitted as power laws (least squares in log-log over all budgets) and extrapolated.
 """
 import argparse, json, math
 from collections import defaultdict
@@ -48,18 +48,20 @@ def main():
               f"D/N {f['tokens_per_param']:.0f}, L_min {f['l_min']:.4f}" + ("  (min at edge!)" if f["min_at_edge"] else ""))
     res = {"fits": fits}
     if len(fits) >= 2:
-        f0, f1 = fits[0], fits[-1]
-        a_n = math.log(f1["n_opt"] / f0["n_opt"]) / math.log(f1["budget"] / f0["budget"])
-        b_l = -math.log(f1["l_min"] / f0["l_min"]) / math.log(f1["budget"] / f0["budget"])
-        res["n_opt_exponent"] = a_n
+        lc = np.log([f["budget"] for f in fits])
+        a_n, k_n = np.polyfit(lc, np.log([f["n_opt"] for f in fits]), 1)      # N_opt = e^k C^a
+        b_l, k_l = np.polyfit(lc, np.log([f["l_min"] for f in fits]), 1)      # L_min = e^k C^b (b < 0)
+        res["n_opt_exponent"] = float(a_n)
+        res["l_min_exponent"] = float(b_l)
+        res["d_opt_exponent"] = float(1 - a_n)
         res["predictions"] = []
         for C in a.predict:
-            n = f1["n_opt"] * (C / f1["budget"]) ** a_n
-            l = f1["l_min"] * (C / f1["budget"]) ** (-b_l)
+            n = math.exp(k_n) * C ** a_n
+            l = math.exp(k_l) * C ** b_l
             res["predictions"].append({"budget": C, "n_opt": n, "d_opt": C / (6 * n), "l_min_pure_power_law": l})
             print(f"PREDICTION C={C:.0e}: N_opt {n / 1e6:.0f}M, D_opt {C / (6 * n) / 1e9:.2f}B, "
                   f"L_min {l:.3f} (pure power law in C; an irreducible-loss term would make it higher)")
-        print(f"N_opt ~ C^{a_n:.2f} from {len(fits)} budgets")
+        print(f"N_opt ~ C^{a_n:.2f}, D_opt ~ C^{1 - a_n:.2f} (least squares in log-log over {len(fits)} budgets)")
     if a.out:
         json.dump(res, open(a.out, "w"), indent=1)
 

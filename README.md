@@ -35,6 +35,12 @@ Hugging Face: [Anjaneyalu/gpt2-124m-fineweb-edu](https://huggingface.co/Anjaneya
 [Performance and multi-GPU benchmarks](#performance-and-multi-gpu-benchmarks) and
 [results/step2_performance](results/step2_performance/README.md).
 
+**Scaling laws:** an IsoFLOP study (Chinchilla Approach 2) of 10M to 200M-parameter models at
+1e17, 3e17 and 1e18 FLOPs finds the compute-optimal size growing as about **C^0.70** (non-embedding
+parameters). A prediction for 1e18 made from the two smaller budgets, and committed before those
+runs, gave 77M parameters and loss 3.13; the runs measured 74.7M and 3.134. See
+[Scaling laws](#scaling-laws) and [results/step3_scaling](results/step3_scaling/README.md).
+
 ---
 
 ## Contents
@@ -50,12 +56,13 @@ Hugging Face: [Anjaneyalu/gpt2-124m-fineweb-edu](https://huggingface.co/Anjaneya
 9. [Step 5 - Instruction finetuning](#step-5---instruction-finetuning)
 10. [Step 6 - Score responses with an LLM judge](#step-6---score-responses-with-an-llm-judge)
 11. [Performance and multi-GPU benchmarks](#performance-and-multi-gpu-benchmarks)
-12. [Configuration reference](#configuration-reference)
-13. [Reference results](#reference-results)
-14. [Running long jobs](#running-long-jobs)
-15. [Troubleshooting](#troubleshooting)
-16. [Mapping to the book](#mapping-to-the-book)
-17. [Credits and references](#credits-and-references)
+12. [Scaling laws](#scaling-laws)
+13. [Configuration reference](#configuration-reference)
+14. [Reference results](#reference-results)
+15. [Running long jobs](#running-long-jobs)
+16. [Troubleshooting](#troubleshooting)
+17. [Mapping to the book](#mapping-to-the-book)
+18. [Credits and references](#credits-and-references)
 
 ---
 
@@ -139,7 +146,9 @@ llm-pretraining/
 │   ├── compare_grads.py     the comparison behind gradcheck.sh
 │   ├── run_step2.sh         the full step 2 measurement campaign
 │   ├── analyze_step2.py     campaign output -> tables and summary.json
-│   └── repro/               minimal scripts for the DDP overlap observation
+│   ├── repro/               minimal scripts for the DDP overlap observation
+│   └── step3/               scaling-law study: sweep.py (run table, learning-rate rule), analyze.py, plots.py
+├── sagemaker/               submit.py (SageMaker training jobs), entry.sh, jobs/prep_data.sh, dashboard_sync.py
 ├── results/                 write-ups, metrics and charts of finished runs
 ├── data/
 │   ├── raw/the-verdict.txt          pretraining test text (book ch02)
@@ -744,6 +753,35 @@ python train.py --config configs/gpt2_124m_fineweb_a10g.yaml --set train.compile
 
 ---
 
+## Scaling laws
+
+How large should a model be for a given amount of training compute? Several model sizes are trained
+at the same compute budget (C = 6 N D, N non-embedding parameters), the best size is read off a
+parabola fit, and the trend across budgets is used to predict the next budget before training it.
+Full method, learning-rate procedure, results, costs and caveats:
+[results/step3_scaling](results/step3_scaling/README.md).
+
+| Budget (FLOPs) | Best size (non-embedding) | Tokens | Tokens per parameter | Lowest val. loss |
+|---|---|---|---|---|
+| 1e17 | 14.9M | 1.12B | 75 | 3.501 |
+| 3e17 | 32.7M | 1.53B | 47 | 3.318 |
+| 1e18 | 74.7M | 2.23B | 30 | 3.134 |
+| 1e18, predicted from the two rows above | 77M | 2.17B | | 3.129 |
+
+![IsoFLOP curves](results/step3_scaling/isoflop.png)
+
+The runs are SageMaker training jobs (one `ml.g5.12xlarge`, 4x A10G, 34 billed hours in total):
+
+```bash
+python scripts/step3/sweep.py --phase p3 --dry_run          # print a phase's run table
+python sagemaker/submit.py --name step3-lr --data fineweb-edu-10bt --results step3/lr --max_hours 7 \
+  --cmd 'python scripts/step3/sweep.py --phase lr'          # phases lr, p2, p2c, p3 in order
+python scripts/step3/analyze.py results/step3_scaling/results_*.jsonl --out results/step3_scaling/analysis.json
+python scripts/step3/plots.py --dir results/step3_scaling
+```
+
+---
+
 ## Configuration reference
 
 A config YAML has three sections. Anything not set uses the defaults in
@@ -1009,8 +1047,9 @@ described above:
 Added in this repository: the package structure, multi-GPU (DDP) training and evaluation,
 bf16 / `torch.compile`, the YAML config system, the general-purpose data pipeline
 (`prepare_data.py`), checkpointing and resume, evaluation metrics (accuracy,
-bits-per-byte), metric tracking, the command-line tools, and the performance and
-multi-GPU benchmarks (FSDP2, tensor and pipeline parallel, gradient-equivalence checks).
+bits-per-byte), metric tracking, the command-line tools, the performance and
+multi-GPU benchmarks (FSDP2, tensor and pipeline parallel, gradient-equivalence checks), and the
+scaling-law study with its SageMaker job tooling.
 
 Other sources:
 
@@ -1018,6 +1057,7 @@ Other sources:
 - **Tokenizer:** OpenAI [tiktoken](https://github.com/openai/tiktoken).
 - **Speed-ups and GPT-2 reproduction recipe:** Andrej Karpathy, [build-nanogpt](https://github.com/karpathy/build-nanogpt) and [llm.c](https://github.com/karpathy/llm.c) (vocab padding to 50304, fused AdamW, MFU accounting, HellaSwag reference score).
 - **Parallelism:** PyTorch DDP, FSDP2, DTensor tensor parallelism and `torch.distributed.pipelining`; the tensor-parallel plan follows [torchtitan](https://github.com/pytorch/torchtitan) and Megatron-LM (Shoeybi et al., 2019).
+- **Scaling laws:** Kaplan et al., [Scaling Laws for Neural Language Models](https://arxiv.org/abs/2001.08361) (2020); Hoffmann et al., [Training Compute-Optimal Large Language Models](https://arxiv.org/abs/2203.15556) (2022, the IsoFLOP "Approach 2" used here); Pearce and Song, [Reconciling Kaplan and Chinchilla Scaling Laws](https://arxiv.org/abs/2406.12907) (2024).
 - **"The Verdict":** a 1908 short story by Edith Wharton (public domain), as used in the book.
 - **Instruction prompt template:** the Alpaca format from [Stanford Alpaca](https://github.com/tatsu-lab/stanford_alpaca), as used in the book.
 
